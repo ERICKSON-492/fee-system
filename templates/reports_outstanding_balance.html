@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Outstanding Fees Report</title>
+    <style>
+        table { border-collapse: collapse; width: 80%; margin: 20px auto; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #eee; }
+        td.outstanding { color: red; font-weight: bold; }
+        h1.centered { text-align: center; }
+        td.centered { text-align: center; }
+    </style>
+</head>
+<body>
+    <h1 class="centered">Outstanding Fees per Student</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Admission No</th>
+                <th>Name</th>
+                <th>Total Fees Due</th>
+                <th>Total Fees Paid</th>
+                <th>Outstanding Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td>{{ row['admission_no'] }}</td>
+                <td>{{ row['name'] }}</td>
+                <td>${{ "%.2f"|format(row['total_due']) }}</td>
+                <td>${{ "%.2f"|format(row['total_paid']) }}</td>
+                <td class="outstanding">${{ "%.2f"|format(row['outstanding_balance']) }}</td>
+            </tr>
+            {% else %}
+                <td colspan="5" class="centered">No outstanding balances found.</td>
+                <td colspan="5" style="text-align:center;">No outstanding balances found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Payments</h2>
+
+<form method="post" action="{{ url_for('add_payment') }}" class="mb-4 row g-2">
+    <div class="col">
+        <label for="student_input" class="visually-hidden">Student</label>
+        <input id="student_input" name="student_input" list="students_list" class="form-control" placeholder="Type student ID or Name" autocomplete="off" required>
+        <datalist id="students_list">
+            {% for student in students %}
+                <option value="{{ student.id }} - {{ student.name }}"></option>
+            {% endfor %}
+        </datalist>
+    </div>
+    <div class="col">
+        <label for="term_id" class="visually-hidden">Term</label>
+        <select id="term_id" class="form-control" name="term_id" title="Term" required>
+            {% for term in terms %}
+                <option value="{{ term.id }}">{{ term.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col">
+        <input class="form-control" type="number" step="0.01" name="amount_paid" placeholder="Amount Paid" required>
+    </div>
+    <div class="col">
+        <label for="payment_date" class="visually-hidden">Payment Date</label>
+        <input id="payment_date" class="form-control" type="date" name="payment_date" title="Payment Date" placeholder="Payment Date" required>
+    </div>
+    <div class="col">
+        <button class="btn btn-success" type="submit">Add Payment</button>
+    </div>
+</form>
+
+<table class="table table-striped">
+    <thead>
+        <tr><th>Student</th><th>Admission No</th><th>Term</th><th>Amount</th><th>Date</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+    {% for payment in payments %}
+        <tr>
+            <form method="POST" action="{{ url_for('edit_payment', id=payment.id) }}">
+                <td>
+                    <label for="student_id_{{ payment.id }}" class="visually-hidden">Student</label>
+                    <select id="student_id_{{ payment.id }}" name="student_id" class="form-control" title="Student">
+                        {% for student in students %}
+                        <option value="{{ student.id }}" {% if student.name == payment.student_name %}selected{% endif %}>
+                            {{ student.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>{{ payment.admission_no }}</td>
+                <td>
+                    <label for="term_id_{{ payment.id }}" class="visually-hidden">Term</label>
+                    <select id="term_id_{{ payment.id }}" name="term_id" class="form-control" title="Term">
+                        {% for term in terms %}
+                        <option value="{{ term.id }}" {% if term.name == payment.term_name %}selected{% endif %}>
+                            {{ term.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <label for="amount_paid_{{ payment.id }}" class="visually-hidden">Amount Paid</label>
+                    <input id="amount_paid_{{ payment.id }}" name="amount_paid" value="{{ payment.amount_paid }}" class="form-control" type="number" step="0.01" title="Amount Paid" placeholder="Amount Paid">
+                </td>
+                <td>
+                    <label for="payment_date_{{ payment.id }}" class="visually-hidden">Payment Date</label>
+                    <input id="payment_date_{{ payment.id }}" name="payment_date" value="{{ payment.payment_date }}" class="form-control" type="date" title="Payment Date" placeholder="Payment Date">
+                </td>
+                <td>
+                    <button class="btn btn-warning btn-sm" type="submit">Save</button>
+            </form>
+            <form method="POST" action="{{ url_for('delete_payment', id=payment.id) }}" class="inline-form">
+                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this payment?')">Delete</button>
+                <a class="btn btn-info btn-sm" href="{{ url_for('view_receipt', payment_id=payment.id) }}" target="_blank">View Receipt</a>
+            </form>
+                </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
