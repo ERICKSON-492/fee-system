@@ -112,12 +112,12 @@ def add_term():
 def add_payment():
     admission_no = request.form.get('admission_no', '').strip()
     student_name = request.form.get('student_name', '').strip()
-    term_id = request.form.get('term_id')
+    term_name = request.form.get('term_name', '').strip()
     amount_paid = request.form.get('amount_paid')
     payment_date = request.form.get('payment_date')
 
     # Validate required fields
-    if not admission_no or not student_name or not term_id or not amount_paid or not payment_date:
+    if not admission_no or not student_name or not term_name or not amount_paid or not payment_date:
         flash("All fields are required.")
         return redirect(url_for('view_payments'))
 
@@ -128,10 +128,9 @@ def add_payment():
         flash("Amount paid must be a valid number.")
         return redirect(url_for('view_payments'))
 
-    # Ensure student exists or create them
+    # Check or create student
     student = query_db('SELECT * FROM students WHERE admission_no = ?', (admission_no,), one=True)
     if not student:
-        # You may want to validate form/class elsewhere or default it
         query_db('INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)', (admission_no, student_name, ''))
         student = query_db('SELECT * FROM students WHERE admission_no = ?', (admission_no,), one=True)
 
@@ -139,17 +138,22 @@ def add_payment():
         flash("Failed to create or find the student.")
         return redirect(url_for('view_payments'))
 
-    # Check term exists
-    term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
+    # Check or create term
+    term = query_db('SELECT * FROM terms WHERE name = ?', (term_name,), one=True)
     if not term:
-        flash("Term not found.")
+        query_db('INSERT INTO terms (name) VALUES (?)', (term_name,))
+        term = query_db('SELECT * FROM terms WHERE name = ?', (term_name,), one=True)
+
+    if not term:
+        flash("Failed to create or find the term.")
         return redirect(url_for('view_payments'))
 
     # Insert payment
     query_db(
         'INSERT INTO payments (student_id, term_id, amount_paid, payment_date) VALUES (?, ?, ?, ?)',
-        (student['id'], int(term_id), amount_paid, payment_date)
+        (student['id'], term['id'], amount_paid, payment_date)
     )
+
     flash("Payment added successfully.")
     return redirect(url_for('view_payments'))
 
