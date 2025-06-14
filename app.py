@@ -109,53 +109,48 @@ def add_term():
         flash("Term added successfully.")
     except sqlite3.IntegrityError:
         flash("Term name must be unique.")
-    return redirect(url_for('view_terms'))
-@app.route('/add_payment', methods=['POST'])
-def add_payment():
-    student_input = request.form.get('student_input', '').strip()
-    term_id = request.form.get('term_id')
-    amount_paid = request.form.get('amount_paid')
-    payment_date = request.form.get('payment_date')
+ 
+@app.route('/payments')
+def view_payments():
+    search_query = request.args.get('q', '').strip()
 
-    if not student_input or not term_id or not amount_paid or not payment_date:
-        flash("Please fill in all payment fields.")
-        return redirect(url_for('view_payments'))
+    # Base SQL query to get payment details
+    base_query = '''
+        SELECT payments.id, students.name AS student_name, students.admission_no,
+               terms.name AS term_name, payments.amount_paid, payments.payment_date
+        FROM payments
+        JOIN students ON payments.student_id = students.id
+        JOIN terms ON payments.term_id = terms.id
+    '''
+    params = ()
 
-    try:
-        amount_paid = float(amount_paid)
-    except ValueError:
-        flash("Amount paid must be a valid number.")
-        return redirect(url_for('view_payments'))
+    # If search query exists, add WHERE clause
+    if search_query:
+        base_query += '''
+            WHERE students.name LIKE ? OR
+                  students.admission_no LIKE ? OR
+                  terms.name LIKE ?
+        '''
+        like_query = f"%{search_query}%"
+        params = (like_query, like_query, like_query)
 
-    # Handle student input (e.g. "123 - John Doe")
-    try:
-        student_id_str = student_input.split(' - ')[0]
-        student_id = int(student_id_str)
-    except (IndexError, ValueError):
-        flash("Invalid student format. Use 'ID - Name'")
-        return redirect(url_for('view_payments'))
+    # Order the results by most recent payment
+    base_query += ' ORDER BY payments.payment_date DESC'
 
-    student = query_db('SELECT * FROM students WHERE id = ?', (student_id,), one=True)
-    if not student:
-        flash("Student not found.")
-        return redirect(url_for('view_payments'))
+    # Execute the final query
+    payments = query_db(base_query, params)
 
-    # Ensure the term exists
-    term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
-    if not term:
-        # If term not found, insert a fallback
-        term_name = f"Term {term_id}"  # Adjust as needed
-        term_amount = 0.0
-        query_db('INSERT INTO terms (id, name, amount) VALUES (?, ?, ?)', (term_id, term_name, term_amount))
+    # Optional: You can also fetch student and term data for dropdowns/forms
+    students = query_db('SELECT * FROM students ORDER BY name')
+    terms = query_db('SELECT * FROM terms ORDER BY id DESC')
 
-    # Insert the payment
-    query_db(
-        'INSERT INTO payments (student_id, term_id, amount_paid, payment_date) VALUES (?, ?, ?, ?)',
-        (student_id, int(term_id), amount_paid, payment_date)
+    return render_template(
+        'payments.html',
+        payments=payments,
+        students=students,
+        terms=terms,
+        search_query=search_query
     )
-
-    flash("Payment added successfully.")
-    return redirect(url_for('view_payments'))
 
 @app.route('/student/edit/<int:id>', methods=['POST'])
 def edit_student(id):
