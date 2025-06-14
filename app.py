@@ -102,14 +102,18 @@ def add_student():
 
 @app.route('/term/add', methods=['POST'])
 def add_term():
-    name = request.form['name']
-    amount = request.form['amount']
+    term_name = request.form.get('term_name')
+    amount = request.form.get('amount')
+
+    if not term_name or not amount:
+        return "Missing term name or amount", 400
 
     try:
-        query_db('INSERT INTO terms (name, amount) VALUES (?, ?)', (name, amount))
-        return jsonify({'message': 'Term added successfully.'})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Term already exists.'}), 400
+        query_db('INSERT INTO terms (name, amount) VALUES (?, ?)', (term_name, float(amount)))
+    except Exception as e:
+        return f"Database error: {e}", 500
+
+    return redirect(url_for('view_terms'))
 
  
 @app.route('/add_payment', methods=['POST'])
