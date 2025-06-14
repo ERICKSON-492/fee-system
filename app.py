@@ -242,3 +242,5 @@ def report_outstanding_balance():
         ORDER BY outstanding_balance DESC
     ''')
     return render_template('reports_outstanding_balance.html', data=data)
+    if __name__ == "__main__":
+    app.run(debug=True)
