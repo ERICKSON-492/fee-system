@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card mb-4">
   <div class="card-header bg-primary text-white">
     <h4 class="mb-0">Add New Student</h4>
   </div>
@@ -22,6 +22,37 @@
       <button type="submit" class="btn btn-success">Add Student</button>
       <a href="{{ url_for('view_students') }}" class="btn btn-secondary">Cancel</a>
     </form>
+  </div>
+</div>
+
+<!-- Recent Students Table -->
+<div class="card">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">Recently Added Students</h5>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-striped mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Admission No</th>
+          <th>Full Name</th>
+          <th>Class/Form</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for student in students %}
+        <tr>
+          <td>{{ student.admission_no }}</td>
+          <td>{{ student.name }}</td>
+          <td>{{ student.form }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="3" class="text-center text-muted">No students added yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endblock %}
