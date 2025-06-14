@@ -60,84 +60,38 @@
     <div class="card-header bg-secondary text-white">Recent Payments</div>
     <div class="card-body">
       {% if payments %}
-        <div class="table-responsive">
-          <table class="table table-bordered table-hover">
-            <thead>
+        <table class="table table-bordered table-hover">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student</th>
+              <th>Admission No</th>
+              <th>Term</th>
+              <th>Amount Paid</th>
+              <th>Payment Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for payment in payments %}
               <tr>
-                <th>#</th>
-                <th>Student</th>
-                <th>Admission No</th>
-                <th>Term</th>
-                <th>Amount Paid</th>
-                <th>Payment Date</th>
-                <th>Actions</th>
+                <td>{{ loop.index }}</td>
+                <td>{{ payment.student_name }}</td>
+                <td>{{ payment.admission_no }}</td>
+                <td>{{ payment.term_name }}</td>
+                <td>{{ payment.amount_paid }}</td>
+                <td>{{ payment.payment_date }}</td>
+                <td>
+                  <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" class="btn btn-sm btn-outline-primary">
+                   View Receipt
+                  </a>
+                </td>
+
               </tr>
-            </thead>
-            <tbody>
-              {% for payment in payments %}
-                <tr>
-                  <td>{{ loop.index }}</td>
-                  <td>{{ payment.student_name }}</td>
-                  <td>{{ payment.admission_no }}</td>
-                  <td>{{ payment.term_name }}</td>
-                  <td>{{ payment.amount_paid }}</td>
-                  <td>{{ payment.payment_date }}</td>
-                  <td>
-                    <div class="btn-group" role="group">
-                      <!-- View Receipt -->
-                      <a href="{{ url_for('view_receipt', id=payment.id) }}" target="_blank" class="btn btn-sm btn-outline-info">Receipt</a>
-                      
-                      <!-- Edit (Modal Trigger) -->
-                      <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editModal{{ payment.id }}">
-                        Edit
-                      </button>
+              
 
-                      <!-- Delete -->
-                      <form method="POST" action="{{ url_for('delete_payment', id=payment.id) }}" onsubmit="return confirm('Delete this payment?');" style="display:inline;">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-
-                <!-- Edit Payment Modal -->
-                <div class="modal fade" id="editModal{{ payment.id }}" tabindex="-1" aria-labelledby="editModalLabel{{ payment.id }}" aria-hidden="true">
-                  <div class="modal-dialog">
-                    <div class="modal-content">
-                      <form method="POST" action="{{ url_for('edit_payment', id=payment.id) }}">
-                        <div class="modal-header">
-                          <h5 class="modal-title" id="editModalLabel{{ payment.id }}">Edit Payment</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                        </div>
-                        <div class="modal-body">
-                          <div class="mb-3">
-                            <label class="form-label">Student ID</label>
-                            <input type="number" name="student_id" class="form-control" value="{{ payment.student_id }}" required>
-                          </div>
-                          <div class="mb-3">
-                            <label class="form-label">Term ID</label>
-                            <input type="number" name="term_id" class="form-control" value="{{ payment.term_id }}" required>
-                          </div>
-                          <div class="mb-3">
-                            <label class="form-label">Amount Paid</label>
-                            <input type="number" name="amount_paid" step="0.01" class="form-control" value="{{ payment.amount_paid }}" required>
-                          </div>
-                          <div class="mb-3">
-                            <label class="form-label">Payment Date</label>
-                            <input type="date" name="payment_date" class="form-control" value="{{ payment.payment_date }}" required>
-                          </div>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="submit" class="btn btn-primary">Save Changes</button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+            {% endfor %}
+          </tbody>
+        </table>
       {% else %}
         <p>No payments found.</p>
       {% endif %}
@@ -146,3 +100,5 @@
 
 </div>
 {% endblock %}
+
+
