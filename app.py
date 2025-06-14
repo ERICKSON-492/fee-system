@@ -51,10 +51,9 @@ def query_db(query, args=(), one=False):
         cur.close()
         return (rv[0] if rv else None) if one else rv
     except sqlite3.Error as e:
-        print("DB error:", e)
+        print("Database error:", e)
         raise
-    finally:
-        conn.close()  # Make sure this always runs!
+
 
 @app.route('/')
 def home():
