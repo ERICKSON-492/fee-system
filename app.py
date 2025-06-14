@@ -1,15 +1,11 @@
 import os
 import re
 import sqlite3
-import logging
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash
 
-from flask import Flask
-
-
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'  # For flash messages
+app.secret_key = 'your-secret-key'
 
 DB_PATH = 'database.db'
 
@@ -17,7 +13,6 @@ def init_db():
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        # Students table
         c.execute('''
             CREATE TABLE students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,7 +21,6 @@ def init_db():
                 form TEXT NOT NULL
             )
         ''')
-        # Terms table
         c.execute('''
             CREATE TABLE terms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +28,6 @@ def init_db():
                 amount REAL NOT NULL
             )
         ''')
-        # Payments table
         c.execute('''
             CREATE TABLE payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,7 +131,6 @@ def add_payment():
         flash("Amount paid must be a number.")
         return redirect(url_for('view_payments'))
 
-    # Optional: Validate student_id and term_id exist
     student = query_db('SELECT * FROM students WHERE id = ?', (student_id,), one=True)
     term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
     if not student:
@@ -155,7 +147,6 @@ def add_payment():
     flash("Payment added successfully.")
     return redirect(url_for('view_payments'))
 
-# Edit Student
 @app.route('/student/edit/<int:id>', methods=['POST'])
 def edit_student(id):
     name = request.form['name']
@@ -164,14 +155,12 @@ def edit_student(id):
     flash("Student updated successfully.")
     return redirect(url_for('view_students'))
 
-# Delete Student
 @app.route('/student/delete/<int:id>', methods=['POST'])
 def delete_student(id):
     query_db('DELETE FROM students WHERE id=?', (id,))
     flash("Student deleted successfully.")
     return redirect(url_for('view_students'))
 
-# Edit Term
 @app.route('/term/edit/<int:id>', methods=['POST'])
 def edit_term(id):
     name = request.form['term_name']
@@ -180,14 +169,12 @@ def edit_term(id):
     flash("Term updated successfully.")
     return redirect(url_for('view_terms'))
 
-# Delete Term
 @app.route('/term/delete/<int:id>', methods=['POST'])
 def delete_term(id):
     query_db('DELETE FROM terms WHERE id=?', (id,))
     flash("Term deleted successfully.")
     return redirect(url_for('view_terms'))
 
-# Edit Payment
 @app.route('/payment/edit/<int:id>', methods=['POST'])
 def edit_payment(id):
     student_id = request.form['student_id']
@@ -201,7 +188,6 @@ def edit_payment(id):
     flash("Payment updated successfully.")
     return redirect(url_for('view_payments'))
 
-# Delete Payment
 @app.route('/payment/delete/<int:id>', methods=['POST'])
 def delete_payment(id):
     query_db('DELETE FROM payments WHERE id=?', (id,))
@@ -224,9 +210,9 @@ def view_receipt(payment_id):
         return "Receipt not found", 404
 
     return render_template('receipt.html', payment=payment, current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 @app.route('/reports/outstanding_balance')
 def report_outstanding_balance():
-    # Query students, total fees due (sum of all terms), total paid, outstanding
     data = query_db('''
         SELECT 
             students.id,
@@ -243,8 +229,9 @@ def report_outstanding_balance():
         ORDER BY outstanding_balance DESC
     ''')
     return render_template('reports_outstanding_balance.html', data=data)
- if __name__ == "__main__":
+
+# ✅ Proper entry point
+if __name__ == "__main__":
+    init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-         
