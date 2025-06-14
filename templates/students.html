@@ -49,7 +49,10 @@
             <a class="nav-link {% if request.endpoint == 'report_outstanding_balance' %}active{% endif %}" href="{{ url_for('report_outstanding_balance') }}">Outstanding Balances</a>
 
           </li>
-          
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'add_student' %}active{% endif %}" href="{{ url_for('add_student') }}">Add Student</a>
+          </li>
+
         </ul>
       </div>
     </div>
