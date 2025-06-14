@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header bg-primary text-white">
+    <h4 class="mb-0">Add New Student</h4>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('add_student') }}">
+      <div class="mb-3">
+        <label for="admission_no" class="form-label">Admission Number</label>
+        <input type="text" class="form-control" id="admission_no" name="admission_no" required />
+      </div>
+      <div class="mb-3">
+        <label for="name" class="form-label">Full Name</label>
+        <input type="text" class="form-control" id="name" name="name" required />
+      </div>
+      <div class="mb-3">
+        <label for="form" class="form-label">Class/Form</label>
+        <input type="text" class="form-control" id="form" name="form" required />
+      </div>
+      <button type="submit" class="btn btn-success">Add Student</button>
+      <a href="{{ url_for('view_students') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
