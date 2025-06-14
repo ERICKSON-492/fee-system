@@ -42,18 +42,15 @@ def init_db():
         conn.commit()
         conn.close()
 
-def query_db(query, args=(), one=False):
-    conn = get_db()
-    try:
-        cur = conn.execute(query, args)
-        conn.commit()
-        rv = cur.fetchall()
-        cur.close()
-        return (rv[0] if rv else None) if one else rv
-    except sqlite3.Error as e:
-        print("Database error:", e)
-        raise
 
+def query_db(query, args=(), one=False):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.execute(query, args)
+    rv = cur.fetchall()
+    conn.commit()
+    conn.close()
+    return (rv[0] if rv else None) if one else rv
 
 @app.route('/')
 def home():
