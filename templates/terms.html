@@ -1,43 +1,54 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Terms</h2>
-<form method="post" action="{{ url_for('add_term') }}" class="mb-3 row g-2">
-    <div class="col">
-        <input class="form-control" type="text" name="term_name" placeholder="Term Name">
-    </div>
-    <div class="col">
-        <input class="form-control" type="number" step="0.01" name="amount" placeholder="Amount">
-    </div>
-    <div class="col">
-        <button class="btn btn-success" type="submit">Add Term</button>
-    </div>
-</form>
+<div class="container py-4">
+    <h2 class="mb-4">Manage Terms</h2>
 
-<table class="table table-striped">
-    <thead>
-        <tr><th>Term</th><th>Amount</th><th>Actions</th></tr>
-    </thead>
-    <tbody>
-    {% for term in terms %}
-        <tr>
-            <form method="POST" action="{{ url_for('edit_term', id=term.id) }}">
-                <td>
-                    <label for="term_name_{{ term.id }}" class="visually-hidden">Term Name</label>
-                    <input id="term_name_{{ term.id }}" name="term_name" value="{{ term.name }}" class="form-control" placeholder="Term Name" title="Term Name">
-                </td>
-                <td>
-                    <label for="amount_{{ term.id }}" class="visually-hidden">Amount</label>
-                    <input id="amount_{{ term.id }}" name="amount" value="{{ term.amount }}" class="form-control" type="number" step="0.01" placeholder="Amount" title="Amount">
-                </td>
-                <td>
-                    <button class="btn btn-warning btn-sm" type="submit">Save</button>
-            </form>
-            <form method="POST" action="{{ url_for('delete_term', id=term.id) }}" class="inline-form">
-                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this term?')">Delete</button>
-            </form>
-                </td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+    <!-- Add Term Form -->
+    <form method="post" action="{{ url_for('add_term') }}" class="row g-2 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="new_term_name" class="form-label">Term Name</label>
+            <input id="new_term_name" class="form-control" type="text" name="term_name" placeholder="e.g. Term 1" required>
+        </div>
+        <div class="col-md-3">
+            <label for="new_amount" class="form-label">Amount</label>
+            <input id="new_amount" class="form-control" type="number" step="0.01" name="amount" placeholder="e.g. 1500.00" required>
+        </div>
+        <div class="col-md-3">
+            <button class="btn btn-success w-100" type="submit">Add Term</button>
+        </div>
+    </form>
+
+    <!-- Terms Table -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Term</th>
+                    <th>Amount</th>
+                    <th style="width: 160px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for term in terms %}
+                <tr>
+                    <form method="POST" action="{{ url_for('edit_term', id=term.id) }}">
+                        <td>
+                            <input type="text" name="term_name" value="{{ term.name }}" class="form-control" required>
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" name="amount" value="{{ term.amount }}" class="form-control" required>
+                        </td>
+                        <td class="d-flex gap-2">
+                            <button class="btn btn-warning btn-sm w-50" type="submit">Save</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('delete_term', id=term.id) }}" onsubmit="return confirm('Delete this term?')" class="w-50">
+                        <button class="btn btn-danger btn-sm w-100" type="submit">Delete</button>
+                    </form>
+                        </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
