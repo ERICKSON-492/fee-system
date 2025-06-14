@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-# Good order
 import os
+import re
 import sqlite3
+import logging
 from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash
 
 from flask import Flask
 
