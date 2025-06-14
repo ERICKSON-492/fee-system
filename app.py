@@ -90,7 +90,7 @@ def add_student():
         flash("Student added successfully.")
     except sqlite3.IntegrityError:
         flash("Admission number must be unique.")
-    return redirect(url_for('view_students'))
+    return render_template('add_student.html')
 
 @app.route('/term/add', methods=['POST'])
 def add_term():
