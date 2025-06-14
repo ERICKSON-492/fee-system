@@ -102,13 +102,15 @@ def add_student():
 
 @app.route('/term/add', methods=['POST'])
 def add_term():
-    name = request.form['term_name']
+    name = request.form['name']
     amount = request.form['amount']
+
     try:
         query_db('INSERT INTO terms (name, amount) VALUES (?, ?)', (name, amount))
-        flash("Term added successfully.")
+        return jsonify({'message': 'Term added successfully.'})
     except sqlite3.IntegrityError:
-        flash("Term name must be unique.")
+        return jsonify({'error': 'Term already exists.'}), 400
+
  
 @app.route('/add_payment', methods=['POST'])
 def add_payment():
