@@ -32,9 +32,9 @@
             <tr>
                 <td>{{ row['admission_no'] }}</td>
                 <td>{{ row['name'] }}</td>
-                <td>${{ "%.2f"|format(row['total_due']) }}</td>
-                <td>${{ "%.2f"|format(row['total_paid']) }}</td>
-                <td class="outstanding">${{ "%.2f"|format(row['outstanding_balance']) }}</td>
+                <td>KES{{ "%.2f"|format(row['total_due']) }}</td>
+                <td>KES{{ "%.2f"|format(row['total_paid']) }}</td>
+                <td class="outstanding">KES{{ "%.2f"|format(row['outstanding_balance']) }}</td>
             </tr>
             {% else %}
                 <td colspan="5" class="centered">No outstanding balances found.</td>
