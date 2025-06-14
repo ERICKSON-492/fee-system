@@ -108,47 +108,47 @@ def add_term():
     except sqlite3.IntegrityError:
         flash("Term name must be unique.")
     return redirect(url_for('view_terms'))
-
 @app.route('/add_payment', methods=['POST'])
 def add_payment():
-    student_input = request.form.get('student_input', '').strip()
-    if not student_input:
-        flash("Student input is required.")
-        return redirect(url_for('view_payments'))
-
-    try:
-        student_id_str = student_input.split(' - ')[0]
-        student_id = int(student_id_str)
-    except (IndexError, ValueError):
-        flash("Invalid student input format. Use 'ID - Name', e.g. '123 - John Doe'.")
-        return redirect(url_for('view_payments'))
-
+    admission_no = request.form.get('admission_no', '').strip()
+    student_name = request.form.get('student_name', '').strip()
     term_id = request.form.get('term_id')
     amount_paid = request.form.get('amount_paid')
     payment_date = request.form.get('payment_date')
 
-    if not term_id or not amount_paid or not payment_date:
-        flash("Please fill in all payment fields.")
+    # Validate required fields
+    if not admission_no or not student_name or not term_id or not amount_paid or not payment_date:
+        flash("All fields are required.")
         return redirect(url_for('view_payments'))
 
+    # Convert amount
     try:
         amount_paid = float(amount_paid)
     except ValueError:
-        flash("Amount paid must be a number.")
+        flash("Amount paid must be a valid number.")
         return redirect(url_for('view_payments'))
 
-    student = query_db('SELECT * FROM students WHERE id = ?', (student_id,), one=True)
-    term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
+    # Ensure student exists or create them
+    student = query_db('SELECT * FROM students WHERE admission_no = ?', (admission_no,), one=True)
     if not student:
-        flash("Student not found.")
+        # You may want to validate form/class elsewhere or default it
+        query_db('INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)', (admission_no, student_name, ''))
+        student = query_db('SELECT * FROM students WHERE admission_no = ?', (admission_no,), one=True)
+
+    if not student:
+        flash("Failed to create or find the student.")
         return redirect(url_for('view_payments'))
+
+    # Check term exists
+    term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
     if not term:
         flash("Term not found.")
         return redirect(url_for('view_payments'))
 
+    # Insert payment
     query_db(
         'INSERT INTO payments (student_id, term_id, amount_paid, payment_date) VALUES (?, ?, ?, ?)',
-        (student_id, int(term_id), amount_paid, payment_date)
+        (student['id'], int(term_id), amount_paid, payment_date)
     )
     flash("Payment added successfully.")
     return redirect(url_for('view_payments'))
