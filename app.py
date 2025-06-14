@@ -90,13 +90,14 @@ def add_student():
                 'INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)',
                 (admission_no, name, form)
             )
-            flash("Student added successfully.", "success")
+            flash("Student added successfully.")
         except sqlite3.IntegrityError:
-            flash("Admission number must be unique.", "danger")
-        return redirect(url_for('view_students'))
+            flash("Admission number must be unique.")
+        return redirect(url_for('add_student'))
 
-    # 🟢 Handle GET request to render the form
-    return render_template('add_student.html')
+    # On GET: load existing students
+    students = query_db('SELECT * FROM students ORDER BY id DESC LIMIT 10')
+    return render_template('add_student.html', students=students)
 
 @app.route('/term/add', methods=['POST'])
 def add_term():
