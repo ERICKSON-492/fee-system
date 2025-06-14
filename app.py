@@ -79,17 +79,23 @@ def view_payments():
     terms = query_db('SELECT * FROM terms')
     return render_template('payments.html', payments=payments, students=students, terms=terms)
 
-@app.route('/student/add', methods=['POST'])
+@app.route('/student/add', methods=['GET', 'POST'])
 def add_student():
-    admission_no = request.form['admission_no']
-    name = request.form['name']
-    form = request.form['form']
-    try:
-        query_db('INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)', 
-                 (admission_no, name, form))
-        flash("Student added successfully.")
-    except sqlite3.IntegrityError:
-        flash("Admission number must be unique.")
+    if request.method == 'POST':
+        admission_no = request.form['admission_no']
+        name = request.form['name']
+        form = request.form['form']
+        try:
+            query_db(
+                'INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)',
+                (admission_no, name, form)
+            )
+            flash("Student added successfully.", "success")
+        except sqlite3.IntegrityError:
+            flash("Admission number must be unique.", "danger")
+        return redirect(url_for('view_students'))
+
+    # 🟢 Handle GET request to render the form
     return render_template('add_student.html')
 
 @app.route('/term/add', methods=['POST'])
