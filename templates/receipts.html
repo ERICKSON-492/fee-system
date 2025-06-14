@@ -1,25 +1,121 @@
-{% extends 'base.html' %}
-{% block content %}
-    <style>
-        @media print {
-            .no-print { display: none; }
-        }
-        body { margin: 2rem; }
-    </style>
-    <div class="container border p-4">
-        <h2 class="text-center mb-4">ST PAUL RONGO DAY SECONDARY School</h2>
-        <hr>
-        <p><strong>Receipt No:</strong> {{ payment.id }}</p>
-        <p><strong>Student Name:</strong> {{ payment.student_name }}</p>
-        <p><strong>Admission No:</strong> {{ payment.admission_no }}</p>
-        <p><strong>Form:</strong> {{ payment.form }}</p>
-        <p><strong>Term:</strong> {{ payment.term_name }}</p>
-        <p><strong>Expected Amount:</strong> {{ "%.2f"|format(payment.term_amount) }}</p>
-        <p><strong>Amount Paid:</strong> {{ "%.2f"|format(payment.amount_paid) }}</p>
-        <p><strong>Date:</strong> {{ payment.payment_date }}</p>
-        <hr>
-        <p class="text-end"><em>Generated on {{ current_time }}</em></p>
-        <div class="text-center no-print">
-            <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" class="btn btn-secondary">Back</a>
-        </div>
-{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt</title>
+  <style>
+    @media print {
+      @page {
+        size: A5 portrait;
+        margin: 10mm;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 12pt;
+        color: #000;
+      }
+      .receipt-container {
+        width: 100%;
+        padding: 10mm;
+        box-sizing: border-box;
+      }
+      .no-print {
+        display: none;
+      }
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+      padding: 20px;
+    }
+
+    .receipt-container {
+      background: white;
+      max-width: 650px;
+      margin: auto;
+      padding: 20px;
+      border: 1px solid #ccc;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .receipt-details {
+      margin-top: 20px;
+    }
+
+    .receipt-details table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .receipt-details th, .receipt-details td {
+      padding: 8px;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .print-button {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .btn-print {
+      padding: 8px 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .btn-print:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt-container">
+    <h2>ST PAULS RONGO DAY SECONDARY SCHOOL</h2>
+
+    <div class="receipt-details">
+      <table>
+        <tr>
+          <th>Student Name:</th>
+          <td>{{ payment.student_name }}</td>
+        </tr>
+        <tr>
+          <th>Admission Number:</th>
+          <td>{{ payment.admission_no }}</td>
+        </tr>
+        <tr>
+          <th>Term:</th>
+          <td>{{ payment.term_name }}</td>
+        </tr>
+        <tr>
+          <th>Amount Paid:</th>
+          <td>{{ payment.amount_paid }}</td>
+        </tr>
+        <tr>
+          <th>Date:</th>
+          <td>{{ payment.payment_date }}</td>
+        </tr>
+        <tr>
+          <th>Receipt ID:</th>
+          <td>{{ payment.id }}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="print-button no-print">
+      <button onclick="window.print()" class="btn-print">Print Receipt</button>
+    </div>
+  </div>
+</body>
+</html>
