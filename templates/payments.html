@@ -3,53 +3,100 @@
 {% block content %}
 <div class="container mt-4">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4>Payments</h4>
-    <form method="GET" action="{{ url_for('view_payments') }}" class="d-flex" role="search">
-      <input name="q" value="{{ search_query }}" type="text" class="form-control me-2" placeholder="Search by student, admission no, term">
-      <button class="btn btn-outline-primary" type="submit">Search</button>
-    </form>
-  </div>
-
-  {% if payments %}
-  <div class="table-responsive">
-    <table class="table table-bordered table-hover">
-      <thead class="table-light">
-        <tr>
-          <th>#</th>
-          <th>Student</th>
-          <th>Admission No</th>
-          <th>Term</th>
-          <th>Amount Paid</th>
-          <th>Payment Date</th>
-          <th>Receipt</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for payment in payments %}
-        <tr>
-          <td>{{ loop.index }}</td>
-          <td>{{ payment.student_name }}</td>
-          <td>{{ payment.admission_no }}</td>
-          <td>{{ payment.term_name }}</td>
-          <td>{{ payment.amount_paid }}</td>
-          <td>{{ payment.payment_date }}</td>
-          <td>
-            <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" class="btn btn-sm btn-outline-info">
-              View Receipt
-            </a>
-          </td>
-          <td>
-        
-
-        </tr>
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="alert alert-info">
+        {% for message in messages %}
+          <div>{{ message }}</div>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Search Bar -->
+  <form method="get" action="{{ url_for('view_payments') }}" class="mb-4 d-flex">
+    <input type="text" name="q" class="form-control me-2" placeholder="Search by student name, admission number, or term" value="{{ search_query or '' }}">
+    <button class="btn btn-outline-primary">Search</button>
+  </form>
+
+  <!-- Add Payment Form -->
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white">Add New Payment</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('add_payment') }}">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Student (ID - Name)</label>
+            <input type="text" name="student_input" class="form-control" required placeholder="e.g. 1 - John Doe">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Term</label>
+            <select name="term_id" class="form-select" required>
+              <option value="">Select term</option>
+              {% for term in terms %}
+                <option value="{{ term.id }}">{{ term.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Amount Paid</label>
+            <input type="number" step="0.01" name="amount_paid" class="form-control" required>
+          </div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label class="form-label">Payment Date</label>
+            <input type="date" name="payment_date" class="form-control" required>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-success">Add Payment</button>
+      </form>
+    </div>
   </div>
-  {% else %}
-    <div class="alert alert-info">No payments found.</div>
-  {% endif %}
+
+  <!-- Payment Records -->
+  <div class="card">
+    <div class="card-header bg-secondary text-white">Recent Payments</div>
+    <div class="card-body">
+      {% if payments %}
+        <table class="table table-bordered table-hover">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student</th>
+              <th>Admission No</th>
+              <th>Term</th>
+              <th>Amount Paid</th>
+              <th>Payment Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for payment in payments %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ payment.student_name }}</td>
+                <td>{{ payment.admission_no }}</td>
+                <td>{{ payment.term_name }}</td>
+                <td>{{ payment.amount_paid }}</td>
+                <td>{{ payment.payment_date }}</td>
+                <td>
+                  <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" class="btn btn-sm btn-outline-primary">
+                   View Receipt
+                  </a>
+                </td>
+
+              </tr>
+              
+
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No payments found.</p>
+      {% endif %}
+    </div>
+  </div>
 
 </div>
 {% endblock %}
