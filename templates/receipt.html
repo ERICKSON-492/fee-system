@@ -1,121 +1,176 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Receipt</title>
-  <style>
-    @media print {
-      @page {
-        size: A5 portrait;
-        margin: 10mm;
-      }
-      body {
-        font-family: Arial, sans-serif;
-        font-size: 12pt;
-        color: #000;
-      }
-      .receipt-container {
-        width: 100%;
-        padding: 10mm;
-        box-sizing: border-box;
-      }
-      .no-print {
-        display: none;
-      }
-    }
+    <meta charset="UTF-8">
+    <title>ST PAUL RONGO DAY SECONDARY SCHOOL</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: #f7f9fc;
+            width: 148mm;
+            margin: 0 auto;
+            padding: 30px;
+        }
 
-    body {
-      font-family: Arial, sans-serif;
-      background: #f8f9fa;
-      padding: 20px;
-    }
+        .receipt-container {
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
 
-    .receipt-container {
-      background: white;
-      max-width: 650px;
-      margin: auto;
-      padding: 20px;
-      border: 1px solid #ccc;
-    }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-    }
+        .header h1 {
+            margin: 0;
+            font-size: 22px;
+            color: #2c3e50;
+        }
 
-    .receipt-details {
-      margin-top: 20px;
-    }
+        .header p {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
 
-    .receipt-details table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+        .logo {
+            max-width: 80px;
+            margin-bottom: 10px;
+        }
 
-    .receipt-details th, .receipt-details td {
-      padding: 8px;
-      border-bottom: 1px solid #ccc;
-    }
+        .details {
+            margin-top: 20px;
+            font-size: 14px;
+        }
 
-    .text-right {
-      text-align: right;
-    }
+        .details table {
+            width: 100%;
+            border-collapse: collapse;
+        }
 
-    .print-button {
-      text-align: center;
-      margin-top: 20px;
-    }
+        .details td {
+            padding: 8px 0;
+        }
 
-    .btn-print {
-      padding: 8px 16px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
+        .details .label {
+            font-weight: bold;
+            color: #34495e;
+            width: 40%;
+        }
 
-    .btn-print:hover {
-      background: #0056b3;
-    }
-  </style>
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 13px;
+            color: #7f8c8d;
+            border-top: 1px solid #ecf0f1;
+            padding-top: 15px;
+        }
+
+        .signature {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .signature div {
+            text-align: center;
+            width: 45%;
+        }
+
+        .print-btn {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .print-btn button {
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .print-btn button:hover {
+            background-color: #3498db;
+        }
+
+        @media print {
+            .print-btn {
+                display: none;
+            }
+            body {
+                background: white;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="receipt-container">
-    <h2>ST PAULS RONGO DAY SECONDARY SCHOOL</h2>
 
-    <div class="receipt-details">
-      <table>
-        <tr>
-          <th>Student Name:</th>
-          <td>{{ payment.student_name }}</td>
-        </tr>
-        <tr>
-          <th>Admission Number:</th>
-          <td>{{ payment.admission_no }}</td>
-        </tr>
-        <tr>
-          <th>Term:</th>
-          <td>{{ payment.term_name }}</td>
-        </tr>
-        <tr>
-          <th>Amount Paid:</th>
-          <td>{{ payment.amount_paid }}</td>
-        </tr>
-        <tr>
-          <th>Date:</th>
-          <td>{{ payment.payment_date }}</td>
-        </tr>
-        <tr>
-          <th>Receipt ID:</th>
-          <td>{{ payment.id }}</td>
-        </tr>
-      </table>
+    <div class="print-btn">
+        <button onclick="window.print()">🖨️ Print Receipt</button>
     </div>
 
-    <div class="print-button no-print">
-      <button onclick="window.print()" class="btn-print">Print Receipt</button>
+    <div class="receipt-container">
+        <div class="header">
+            <img src="/static/logo.png" alt="School Logo" class="logo"> <!-- Optional logo -->
+            <h1>Your School Name</h1>
+            <p>1234 School Lane, Town, Country<br>Tel: +254 700 000000 | Email: info@stpaulrongo.com</p>
+        </div>
+
+        <h2 style="text-align:center; margin-top: 10px; color:#2c3e50;">school fees payment</h2>
+
+        <div class="details">
+            <table>
+                <tr>
+                    <td class="label">Receipt No:</td>
+                    <td>#{{ payment.id }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Student Name:</td>
+                    <td>{{ payment.student_name }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Admission No:</td>
+                    <td>{{ payment.admission_no }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Term:</td>
+                    <td>{{ payment.term_name }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Amount Paid:</td>
+                    <td>KES {{ "{:,.2f}".format(payment.amount_paid) }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Payment Date:</td>
+                    <td>{{ payment.payment_date }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="signature">
+            <div>
+                ___________________________<br>
+                Authorized Signature
+            </div>
+            <div>
+                ___________________________<br>
+                Parent / Guardian Signature
+            </div>
+        </div>
+
+        <div class="footer">
+            Generated on {{ current_time }}<br>
+            Thank you for your payment.
+        </div>
     </div>
-  </div>
+
 </body>
 </html>
