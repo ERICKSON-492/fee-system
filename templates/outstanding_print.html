@@ -3,27 +3,70 @@
 <head>
     <title>Outstanding Balances</title>
     <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
         body {
-            font-family: Arial, sans-serif;
-            font-size: 14px;
+            font-family: 'Arial', sans-serif;
+            font-size: 13px;
+            color: #000;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .header img {
+            max-height: 60px;
         }
         h2 {
+            margin: 0;
+        }
+        .timestamp {
             text-align: center;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .summary, .total {
+            text-align: center;
+            font-weight: bold;
+            margin-top: 10px;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 25px;
         }
         th, td {
-            border: 1px solid #999;
+            border: 1px solid #aaa;
             padding: 6px 10px;
             text-align: left;
         }
     </style>
 </head>
 <body>
-    <h2>Outstanding Balances</h2>
+
+    <div class="header">
+        <!-- Uncomment and replace src with your logo path if available -->
+        <!-- <img src="{{ url_for('static', filename='logo.png') }}" alt="School Logo"> -->
+        <h2>
+            {% if outstanding|length == 1 %}
+                Outstanding Balance Receipt – {{ outstanding[0].name }}
+            {% else %}
+                Outstanding Balances Report
+            {% endif %}
+        </h2>
+    </div>
+
+    <div class="timestamp">Date Printed: {{ current_time }}</div>
+
+    {% if outstanding|length == 1 %}
+        <div class="summary">This is an individual receipt for {{ outstanding[0].name }} ({{ outstanding[0].admission_no }})</div>
+        <div class="total">Total Outstanding: KES {{ "{:,.2f}".format(total_balance) }}</div>
+    {% elif outstanding|length > 1 %}
+        <div class="total">Total Outstanding for All Students: KES {{ "{:,.2f}".format(total_balance) }}</div>
+    {% endif %}
+
     <table>
         <thead>
             <tr>
@@ -44,5 +87,6 @@
             {% endfor %}
         </tbody>
     </table>
+
 </body>
 </html>
