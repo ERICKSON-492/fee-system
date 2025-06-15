@@ -192,14 +192,30 @@ def add_payment():
     )
 @app.route('/payments/print')
 def print_payments():
-    payments = query_db('''
+    admission_no = request.args.get('admission_no', '').strip()
+    term = request.args.get('term', '').strip()
+
+    query = '''
         SELECT payments.id, students.name AS student_name, students.admission_no,
                terms.name AS term_name, payments.amount_paid, payments.payment_date
         FROM payments
         JOIN students ON payments.student_id = students.id
         JOIN terms ON payments.term_id = terms.id
-        ORDER BY payments.payment_date DESC
-    ''')
+        WHERE 1 = 1
+    '''
+    params = []
+
+    if admission_no:
+        query += " AND students.admission_no = ?"
+        params.append(admission_no)
+
+    if term:
+        query += " AND terms.name = ?"
+        params.append(term)
+
+    query += " ORDER BY payments.payment_date DESC"
+
+    payments = query_db(query, params)
 
     return render_template('payments_printable.html', payments=payments)
 
