@@ -1,31 +1,59 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Outstanding Fees Report</title>
     <style>
-        table { border-collapse: collapse; width: 80%; margin: 20px auto; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background: #eee; }
-        td.outstanding { color: red; font-weight: bold; }
-        h1.centered { text-align: center; }
-        td.centered { text-align: center; }
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #eee;
+        }
+        td.outstanding {
+            color: red;
+            font-weight: bold;
+        }
+        h1.centered {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .print-btn {
+            text-align: right;
+            width: 80%;
+            margin: 10px auto;
+        }
+        .print-btn button {
+            margin-left: 10px;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+        }
     </style>
-    @media print {
-    .print-btn {
-        display: none;
-    }
-    body {
-        background: white;
-    }
-}
-
 </head>
 <body>
+
     <h1 class="centered">Outstanding Fees per Student</h1>
+
+    <div class="print-btn">
+        <button onclick="window.print()">🖨️ Print Outstanding Balances</button>
+        <a href="{{ url_for('print_outstanding_pdf') }}" target="_blank">
+            <button>📄 Export as PDF</button>
+        </a>
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -37,25 +65,24 @@
             </tr>
         </thead>
         <tbody>
-            {% for row in data %}
-            <tr>
-                <td>{{ row['admission_no'] }}</td>
-                <td>{{ row['name'] }}</td>
-                <td>KES{{ "%.2f"|format(row['total_due']) }}</td>
-                <td>KES{{ "%.2f"|format(row['total_paid']) }}</td>
-                <td class="outstanding">KES{{ "%.2f"|format(row['outstanding_balance']) }}</td>
-            </tr>
+            {% if data %}
+                {% for row in data %}
+                <tr>
+                    <td>{{ row['admission_no'] }}</td>
+                    <td>{{ row['name'] }}</td>
+                    <td>KES{{ "%.2f"|format(row['total_due']) }}</td>
+                    <td>KES{{ "%.2f"|format(row['total_paid']) }}</td>
+                    <td class="outstanding">KES{{ "%.2f"|format(row['outstanding_balance']) }}</td>
+                </tr>
+                {% endfor %}
             {% else %}
-                <td colspan="5" class="centered">No outstanding balances found.</td>
-                <td colspan="5" style="text-align:center;">No outstanding balances found.</td>
-            </tr>
-            <div class="print-btn" style="text-align: right; margin-bottom: 20px;">
-    <button onclick="window.print()">🖨️ Print Outstanding Balances</button>
-</div>
-
-            {% endfor %}
+                <tr>
+                    <td colspan="5" class="centered">No outstanding balances found.</td>
+                </tr>
+            {% endif %}
         </tbody>
     </table>
+
 </body>
 </html>
 {% endblock %}
