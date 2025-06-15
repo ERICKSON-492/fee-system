@@ -51,6 +51,12 @@
 <div class="print-btn">
     <button onclick="window.print()">🖨️ Print This Page</button>
 </div>
+<a href="{{ url_for('export_payments_pdf', admission_no=request.args.get('admission_no', ''), term=request.args.get('term', '')) }}" target="_blank">
+    📄 Export to PDF
+</a>
+<a href="{{ url_for('export_payments_pdf', admission_no=request.args.get('admission_no', ''), term=request.args.get('term', '')) }}" class="btn" target="_blank">
+    Export to PDF
+</a>
 
 <h1>Payment Records</h1>
 
