@@ -1,443 +1,603 @@
 import os
-import re
-import sqlite3
+import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session
 from weasyprint import HTML
-import io
 import qrcode
 import base64
 from io import BytesIO
+from contextlib import contextmanager
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
-DB_PATH = 'database.db'
+# Database configuration
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# Connection pool setup
+db_pool = ThreadedConnectionPool(
+    minconn=1,
+    maxconn=10,
+    dsn=DATABASE_URL,
+    sslmode='require'
+)
+
+@contextmanager
+def get_db_connection():
+    conn = db_pool.getconn()
+    try:
+        yield conn
+    finally:
+        db_pool.putconn(conn)
+
+@contextmanager
+def get_db_cursor():
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        try:
+            yield cur
+            conn.commit()
+        except:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
 def init_db():
-    if not os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''
-            CREATE TABLE students (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+    with get_db_cursor() as cur:
+        # Create tables
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS students (
+                id SERIAL PRIMARY KEY,
                 admission_no TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
-                form TEXT NOT NULL
+                form TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        c.execute('''
-            CREATE TABLE terms (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+        
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS terms (
+                id SERIAL PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
-                amount REAL NOT NULL
+                amount DECIMAL(10,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        c.execute('''
-            CREATE TABLE payments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id INTEGER NOT NULL,
-                term_id INTEGER NOT NULL,
-                amount_paid REAL NOT NULL,
-                payment_date TEXT NOT NULL,
-                FOREIGN KEY(student_id) REFERENCES students(id),
-                FOREIGN KEY(term_id) REFERENCES terms(id)
+        
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+                amount_paid DECIMAL(10,2) NOT NULL,
+                payment_date DATE NOT NULL,
+                receipt_number TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        conn.commit()
-        conn.close()
+        
+        # Create admin user if not exists
+        cur.execute("SELECT 1 FROM pg_tables WHERE tablename = 'users'")
+        if not cur.fetchone():
+            cur.execute('''
+                CREATE TABLE users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            hashed_password = generate_password_hash('admin')
+            cur.execute('''
+                INSERT INTO users (username, password)
+                VALUES (%s, %s)
+            ''', ('admin', hashed_password))
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page', 'danger')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
-def query_db(query, args=(), one=False):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cur = conn.execute(query, args)
-    rv = cur.fetchall()
-    conn.commit()
-    conn.close()
-    return (rv[0] if rv else None) if one else rv
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        with get_db_cursor() as cur:
+            cur.execute('SELECT * FROM users WHERE username = %s', (username,))
+            user = cur.fetchone()
+            
+            if user and check_password_hash(user[2], password):
+                session['user_id'] = user[0]
+                session['username'] = user[1]
+                flash('Login successful!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Invalid username or password', 'danger')
+    
+    return render_template('login.html')
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/')
-def home():
+@login_required
+def dashboard():
     return redirect(url_for('view_students'))
-
 
 @app.route('/students')
+@login_required
 def view_students():
-    students = query_db('SELECT * FROM students')
-    return render_template('students.html', students=students)
-
-
-@app.route('/terms')
-def view_terms():
-    terms = query_db('SELECT * FROM terms')
-    return render_template('terms.html', terms=terms)
-
-
-@app.route('/payments')
-def view_payments():
-    payments = query_db('''
-        SELECT payments.id, students.name AS student_name, students.admission_no,
-               terms.name AS term_name, payments.amount_paid, payments.payment_date
-        FROM payments
-        JOIN students ON payments.student_id = students.id
-        JOIN terms ON payments.term_id = terms.id
-        ORDER BY payments.payment_date DESC
-    ''')
-    students = query_db('SELECT * FROM students')
-    terms = query_db('SELECT * FROM terms')
-    return render_template('payments.html', payments=payments, students=students, terms=terms)
-
+    search = request.args.get('search', '')
+    query = 'SELECT * FROM students'
+    params = []
+    
+    if search:
+        query += ' WHERE admission_no ILIKE %s OR name ILIKE %s'
+        params.extend([f'%{search}%', f'%{search}%'])
+    
+    query += ' ORDER BY name'
+    
+    with get_db_cursor() as cur:
+        cur.execute(query, params)
+        students = cur.fetchall()
+    
+    return render_template('students.html', students=students, search=search)
 
 @app.route('/student/add', methods=['GET', 'POST'])
+@login_required
 def add_student():
     if request.method == 'POST':
-        admission_no = request.form['admission_no']
-        name = request.form['name']
-        form = request.form['form']
+        admission_no = request.form['admission_no'].strip()
+        name = request.form['name'].strip()
+        form = request.form['form'].strip()
+        
         try:
-            query_db(
-                'INSERT INTO students (admission_no, name, form) VALUES (?, ?, ?)',
-                (admission_no, name, form)
-            )
-            flash("Student added successfully.")
-        except sqlite3.IntegrityError:
-            flash("Admission number must be unique.")
-        return redirect(url_for('add_student'))
+            with get_db_cursor() as cur:
+                cur.execute(
+                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s)',
+                    (admission_no, name, form)
+                )
+                flash('Student added successfully!', 'success')
+                return redirect(url_for('view_students'))
+        except psycopg2.IntegrityError:
+            flash('Admission number must be unique!', 'danger')
+        except Exception as e:
+            flash(f'Error adding student: {str(e)}', 'danger')
+    
+    return render_template('add_student.html')
 
-    students = query_db('SELECT * FROM students ORDER BY id DESC LIMIT 10')
-    return render_template('add_student.html', students=students)
-
-
-@app.route('/term/add', methods=['POST'])
-def add_term():
-    term_name = request.form.get('term_name')
-    amount = request.form.get('amount')
-
-    if not term_name or not amount:
-        return "Missing term name or amount", 400
-
-    try:
-        query_db('INSERT INTO terms (name, amount) VALUES (?, ?)', (term_name, float(amount)))
-    except Exception as e:
-        return f"Database error: {e}", 500
-
-    return redirect(url_for('view_terms'))
-
-
-@app.route('/add_payment', methods=['POST'])
-def add_payment():
-    student_input = request.form.get('student_input', '').strip()
-    term_id = request.form.get('term_id')
-    amount_paid = request.form.get('amount_paid')
-    payment_date = request.form.get('payment_date')
-
-    if not student_input or not term_id or not amount_paid or not payment_date:
-        flash("Please fill in all payment fields.")
-        return redirect(url_for('view_payments'))
-
-    try:
-        amount_paid = float(amount_paid)
-    except ValueError:
-        flash("Amount paid must be a valid number.")
-        return redirect(url_for('view_payments'))
-
-    student = query_db(
-        'SELECT * FROM students WHERE id = ? OR admission_no = ?',
-        (student_input, student_input), one=True
-    )
-
-    if not student:
-        flash("Student not found. Please enter a valid ID or admission number.")
-        return redirect(url_for('view_payments'))
-
-    student_id = student['id']
-
-    term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
-    if not term:
-        term_name = f"Term {term_id}"
-        term_amount = 0.0
-        query_db('INSERT INTO terms (id, name, amount) VALUES (?, ?, ?)', (term_id, term_name, term_amount))
-
-    query_db(
-        'INSERT INTO payments (student_id, term_id, amount_paid, payment_date) VALUES (?, ?, ?, ?)',
-        (student_id, int(term_id), amount_paid, payment_date)
-    )
-
-    flash("Payment added successfully.")
-    return redirect(url_for('view_payments'))
-
-
-@app.route('/payments/print')
-def print_payments():
-    admission_no = request.args.get('admission_no', '').strip()
-    term = request.args.get('term', '').strip()
-
-    query = '''
-        SELECT payments.id, students.name AS student_name, students.admission_no,
-               terms.name AS term_name, payments.amount_paid, payments.payment_date
-        FROM payments
-        JOIN students ON payments.student_id = students.id
-        JOIN terms ON payments.term_id = terms.id
-        WHERE 1 = 1
-    '''
-    params = []
-
-    if admission_no:
-        query += " AND students.admission_no = ?"
-        params.append(admission_no)
-
-    if term:
-        query += " AND terms.name = ?"
-        params.append(term)
-
-    query += " ORDER BY payments.payment_date DESC"
-    payments = query_db(query, params)
-
-    return render_template('payments_printable.html', payments=payments)
-
-
-@app.route('/payments/print/pdf')
-def export_payments_pdf():
-    admission_no = request.args.get('admission_no', '').strip()
-    term = request.args.get('term', '').strip()
-
-    query = '''
-        SELECT payments.id, students.name AS student_name, students.admission_no,
-               terms.name AS term_name, payments.amount_paid, payments.payment_date
-        FROM payments
-        JOIN students ON payments.student_id = students.id
-        JOIN terms ON payments.term_id = terms.id
-        WHERE 1 = 1
-    '''
-    params = []
-
-    if admission_no:
-        query += " AND students.admission_no = ?"
-        params.append(admission_no)
-
-    if term:
-        query += " AND terms.name = ?"
-        params.append(term)
-
-    query += " ORDER BY payments.payment_date DESC"
-    payments = query_db(query, params)
-
-    rendered_html = render_template('payments_printable.html', payments=payments)
-    pdf_file = HTML(string=rendered_html).write_pdf()
-
-    response = make_response(pdf_file)
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = 'inline; filename=payments_report.pdf'
-    return response
-
-
-@app.route('/student/edit/<int:id>', methods=['POST'])
+@app.route('/student/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_student(id):
-    name = request.form['name']
-    form = request.form['form']
-    query_db('UPDATE students SET name=?, form=? WHERE id=?', (name, form, id))
-    flash("Student updated successfully.")
-    return redirect(url_for('view_students'))
-
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        form = request.form['form'].strip()
+        
+        try:
+            with get_db_cursor() as cur:
+                cur.execute(
+                    'UPDATE students SET name = %s, form = %s WHERE id = %s',
+                    (name, form, id)
+                )
+                flash('Student updated successfully!', 'success')
+                return redirect(url_for('view_students'))
+        except Exception as e:
+            flash(f'Error updating student: {str(e)}', 'danger')
+    
+    with get_db_cursor() as cur:
+        cur.execute('SELECT * FROM students WHERE id = %s', (id,))
+        student = cur.fetchone()
+    
+    if not student:
+        flash('Student not found', 'danger')
+        return redirect(url_for('view_students'))
+    
+    return render_template('edit_student.html', student=student)
 
 @app.route('/student/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_student(id):
-    query_db('DELETE FROM students WHERE id=?', (id,))
-    flash("Student deleted successfully.")
+    try:
+        with get_db_cursor() as cur:
+            cur.execute('DELETE FROM students WHERE id = %s', (id,))
+            flash('Student deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting student: {str(e)}', 'danger')
+    
     return redirect(url_for('view_students'))
 
+@app.route('/terms')
+@login_required
+def view_terms():
+    with get_db_cursor() as cur:
+        cur.execute('SELECT * FROM terms ORDER BY name')
+        terms = cur.fetchall()
+    
+    return render_template('terms.html', terms=terms)
 
-@app.route('/term/edit/<int:id>', methods=['POST'])
+@app.route('/term/add', methods=['GET', 'POST'])
+@login_required
+def add_term():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        amount = request.form['amount'].strip()
+        
+        try:
+            amount = float(amount)
+            with get_db_cursor() as cur:
+                cur.execute(
+                    'INSERT INTO terms (name, amount) VALUES (%s, %s)',
+                    (name, amount)
+                )
+                flash('Term added successfully!', 'success')
+                return redirect(url_for('view_terms'))
+        except ValueError:
+            flash('Amount must be a valid number', 'danger')
+        except psycopg2.IntegrityError:
+            flash('Term name must be unique!', 'danger')
+        except Exception as e:
+            flash(f'Error adding term: {str(e)}', 'danger')
+    
+    return render_template('add_term.html')
+
+@app.route('/term/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_term(id):
-    name = request.form['term_name']
-    amount = request.form['amount']
-    query_db('UPDATE terms SET name=?, amount=? WHERE id=?', (name, amount, id))
-    flash("Term updated successfully.")
-    return redirect(url_for('view_terms'))
-
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        amount = request.form['amount'].strip()
+        
+        try:
+            amount = float(amount)
+            with get_db_cursor() as cur:
+                cur.execute(
+                    'UPDATE terms SET name = %s, amount = %s WHERE id = %s',
+                    (name, amount, id)
+                )
+                flash('Term updated successfully!', 'success')
+                return redirect(url_for('view_terms'))
+        except ValueError:
+            flash('Amount must be a valid number', 'danger')
+        except psycopg2.IntegrityError:
+            flash('Term name must be unique!', 'danger')
+        except Exception as e:
+            flash(f'Error updating term: {str(e)}', 'danger')
+    
+    with get_db_cursor() as cur:
+        cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
+        term = cur.fetchone()
+    
+    if not term:
+        flash('Term not found', 'danger')
+        return redirect(url_for('view_terms'))
+    
+    return render_template('edit_term.html', term=term)
 
 @app.route('/term/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_term(id):
-    query_db('DELETE FROM terms WHERE id=?', (id,))
-    flash("Term deleted successfully.")
+    try:
+        with get_db_cursor() as cur:
+            cur.execute('DELETE FROM terms WHERE id = %s', (id,))
+            flash('Term deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting term: {str(e)}', 'danger')
+    
     return redirect(url_for('view_terms'))
 
+@app.route('/payments')
+@login_required
+def view_payments():
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT p.id, s.name AS student_name, s.admission_no,
+                   t.name AS term_name, p.amount_paid, p.payment_date,
+                   p.receipt_number
+            FROM payments p
+            JOIN students s ON p.student_id = s.id
+            JOIN terms t ON p.term_id = t.id
+            ORDER BY p.payment_date DESC
+        ''')
+        payments = cur.fetchall()
+        
+        cur.execute('SELECT id, name FROM students ORDER BY name')
+        students = cur.fetchall()
+        
+        cur.execute('SELECT id, name FROM terms ORDER BY name')
+        terms = cur.fetchall()
+    
+    return render_template('payments.html', 
+                         payments=payments,
+                         students=students,
+                         terms=terms)
 
-@app.route('/payment/edit/<int:id>', methods=['POST'])
-def edit_payment(id):
-    student_id = request.form['student_id']
-    term_id = request.form['term_id']
-    amount_paid = request.form['amount_paid']
-    payment_date = request.form['payment_date']
-    query_db('''
-        UPDATE payments SET student_id=?, term_id=?, amount_paid=?, payment_date=?
-        WHERE id=?
-    ''', (student_id, term_id, amount_paid, payment_date, id))
-    flash("Payment updated successfully.")
+@app.route('/payment/add', methods=['POST'])
+@login_required
+def add_payment():
+    student_input = request.form.get('student_input', '').strip()
+    term_id = request.form.get('term_id', '').strip()
+    amount_paid = request.form.get('amount_paid', '').strip()
+    payment_date = request.form.get('payment_date', '').strip()
+    
+    if not all([student_input, term_id, amount_paid, payment_date]):
+        flash('Please fill in all payment fields', 'danger')
+        return redirect(url_for('view_payments'))
+    
+    try:
+        amount_paid = float(amount_paid)
+        receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d')}-{os.urandom(2).hex().upper()}"
+        
+        with get_db_cursor() as cur:
+            # Find student by ID or admission number
+            cur.execute('''
+                SELECT id FROM students 
+                WHERE id = %s OR admission_no = %s
+            ''', (student_input, student_input))
+            student = cur.fetchone()
+            
+            if not student:
+                flash('Student not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
+            student_id = student[0]
+            
+            # Verify term exists
+            cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
+            if not cur.fetchone():
+                flash('Term not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
+            # Record payment
+            cur.execute('''
+                INSERT INTO payments 
+                (student_id, term_id, amount_paid, payment_date, receipt_number)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+            
+            payment_id = cur.fetchone()[0]
+            flash('Payment recorded successfully!', 'success')
+            return redirect(url_for('view_receipt', payment_id=payment_id))
+            
+    except ValueError:
+        flash('Amount must be a valid number', 'danger')
+    except Exception as e:
+        flash(f'Error recording payment: {str(e)}', 'danger')
+    
     return redirect(url_for('view_payments'))
 
+@app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_payment(id):
+    if request.method == 'POST':
+        student_id = request.form['student_id'].strip()
+        term_id = request.form['term_id'].strip()
+        amount_paid = request.form['amount_paid'].strip()
+        payment_date = request.form['payment_date'].strip()
+        
+        try:
+            amount_paid = float(amount_paid)
+            with get_db_cursor() as cur:
+                cur.execute('''
+                    UPDATE payments 
+                    SET student_id = %s, term_id = %s, 
+                        amount_paid = %s, payment_date = %s
+                    WHERE id = %s
+                ''', (student_id, term_id, amount_paid, payment_date, id))
+                
+                flash('Payment updated successfully!', 'success')
+                return redirect(url_for('view_payments'))
+        except ValueError:
+            flash('Amount must be a valid number', 'danger')
+        except Exception as e:
+            flash(f'Error updating payment: {str(e)}', 'danger')
+    
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date,
+                   s.name AS student_name, s.admission_no,
+                   t.name AS term_name
+            FROM payments p
+            JOIN students s ON p.student_id = s.id
+            JOIN terms t ON p.term_id = t.id
+            WHERE p.id = %s
+        ''', (id,))
+        payment = cur.fetchone()
+        
+        cur.execute('SELECT id, name FROM students ORDER BY name')
+        students = cur.fetchall()
+        
+        cur.execute('SELECT id, name FROM terms ORDER BY name')
+        terms = cur.fetchall()
+    
+    if not payment:
+        flash('Payment not found', 'danger')
+        return redirect(url_for('view_payments'))
+    
+    return render_template('edit_payment.html',
+                         payment=payment,
+                         students=students,
+                         terms=terms)
 
 @app.route('/payment/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_payment(id):
-    query_db('DELETE FROM payments WHERE id=?', (id,))
-    flash("Payment deleted successfully.")
+    try:
+        with get_db_cursor() as cur:
+            cur.execute('DELETE FROM payments WHERE id = %s', (id,))
+            flash('Payment deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting payment: {str(e)}', 'danger')
+    
     return redirect(url_for('view_payments'))
 
-
 @app.route('/receipt/<int:payment_id>')
+@login_required
 def view_receipt(payment_id):
-    payment = query_db('''
-        SELECT payments.id, students.id AS student_id, students.name AS student_name,
-               students.admission_no, students.form, terms.name AS term_name,
-               terms.amount AS term_amount, payments.amount_paid, payments.payment_date
-        FROM payments
-        JOIN students ON payments.student_id = students.id
-        JOIN terms ON payments.term_id = terms.id
-        WHERE payments.id = ?
-    ''', (payment_id,), one=True)
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
+                   s.name AS student_name, s.admission_no, s.form,
+                   t.name AS term_name, t.amount AS term_amount
+            FROM payments p
+            JOIN students s ON p.student_id = s.id
+            JOIN terms t ON p.term_id = t.id
+            WHERE p.id = %s
+        ''', (payment_id,))
+        payment = cur.fetchone()
+        
+        if not payment:
+            flash('Receipt not found', 'danger')
+            return redirect(url_for('view_payments'))
+        
+        # Calculate total paid and balance
+        cur.execute('''
+            SELECT COALESCE(SUM(amount_paid), 0) FROM payments
+            WHERE student_id = %s
+        ''', (payment['student_id'],))
+        total_paid = cur.fetchone()[0]
+        
+        outstanding_balance = float(payment['term_amount']) - total_paid
+        
+        # Generate QR code
+        qr_data = f"""
+        Receipt: {payment['receipt_number']}
+        Student: {payment['student_name']} ({payment['admission_no']})
+        Amount: {payment['amount_paid']:.2f}
+        Date: {payment['payment_date']}
+        """
+        qr_img = qrcode.make(qr_data)
+        qr_buffer = BytesIO()
+        qr_img.save(qr_buffer, format="PNG")
+        qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+    
+    return render_template('receipt.html',
+                         payment=payment,
+                         total_paid=total_paid,
+                         outstanding_balance=outstanding_balance,
+                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                         qr_code=qr_b64)
 
-    if not payment:
-        return "Receipt not found", 404
+@app.route('/receipt/<int:payment_id>/pdf')
+@login_required
+def generate_receipt_pdf(payment_id):
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
+                   s.name AS student_name, s.admission_no, s.form,
+                   t.name AS term_name, t.amount AS term_amount
+            FROM payments p
+            JOIN students s ON p.student_id = s.id
+            JOIN terms t ON p.term_id = t.id
+            WHERE p.id = %s
+        ''', (payment_id,))
+        payment = cur.fetchone()
+        
+        if not payment:
+            return "Receipt not found", 404
+        
+        # Calculate total paid and balance
+        cur.execute('''
+            SELECT COALESCE(SUM(amount_paid), 0) FROM payments
+            WHERE student_id = %s
+        ''', (payment['student_id'],))
+        total_paid = cur.fetchone()[0]
+        
+        outstanding_balance = float(payment['term_amount']) - total_paid
+        
+        # Generate QR code
+        qr_data = f"""
+        Receipt: {payment['receipt_number']}
+        Student: {payment['student_name']} ({payment['admission_no']})
+        Amount: {payment['amount_paid']:.2f}
+        Date: {payment['payment_date']}
+        """
+        qr_img = qrcode.make(qr_data)
+        qr_buffer = BytesIO()
+        qr_img.save(qr_buffer, format="PNG")
+        qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+        
+        # Generate PDF
+        html = render_template('receipt_pdf.html',
+                             payment=payment,
+                             total_paid=total_paid,
+                             outstanding_balance=outstanding_balance,
+                             current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                             qr_code=qr_b64)
+        
+        pdf = HTML(string=html).write_pdf()
+        
+        response = make_response(pdf)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
+        return response
 
-    student_id = payment['student_id']
-    term_amount = payment['term_amount']
+@app.route('/reports/outstanding')
+@login_required
+def outstanding_report():
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT s.id, s.name, s.admission_no,
+                   SUM(t.amount) AS total_due,
+                   COALESCE(SUM(p.amount_paid), 0) AS total_paid,
+                   SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) AS balance
+            FROM students s
+            CROSS JOIN terms t
+            LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
+            GROUP BY s.id
+            HAVING SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) > 0
+            ORDER BY balance DESC
+        ''')
+        report_data = cur.fetchall()
+    
+    return render_template('outstanding_report.html', report_data=report_data)
 
-    total_paid_data = query_db('''
-        SELECT SUM(amount_paid) AS total_paid
-        FROM payments
-        WHERE student_id = ?
-    ''', (student_id,), one=True)
-
-    total_paid = total_paid_data['total_paid'] or 0
-    outstanding_balance = term_amount - total_paid
-
-    return render_template(
-        'receipt.html',
-        payment=payment,
-        total_fees=term_amount,
-        total_paid=total_paid,
-        outstanding_balance=outstanding_balance,
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    )
-
-
-@app.route('/reports/outstanding_balance')
-def report_outstanding_balance():
-    data = query_db('''
-        SELECT 
-            students.id,
-            students.name,
-            students.admission_no,
-            IFNULL(SUM(terms.amount), 0) AS total_due,
-            IFNULL(SUM(payments.amount_paid), 0) AS total_paid,
-            (IFNULL(SUM(terms.amount), 0) - IFNULL(SUM(payments.amount_paid), 0)) AS outstanding_balance
-        FROM students
-        LEFT JOIN terms ON 1=1
-        LEFT JOIN payments ON payments.student_id = students.id AND payments.term_id = terms.id
-        GROUP BY students.id
-        HAVING outstanding_balance > 0
-        ORDER BY outstanding_balance DESC
-    ''')
-    return render_template('reports_outstanding_balance.html', data=data)
-
-
-from datetime import datetime
-
-@app.route('/outstanding/print/pdf')
-def print_outstanding_pdf():
-    admission_no = request.args.get('admission_no', '').strip()
-
-    query = '''
-        SELECT students.name, students.admission_no, terms.name AS term_name,
-               terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
-        FROM students
-        JOIN terms
-        LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
-    '''
-    params = []
-    if admission_no:
-        query += ' WHERE students.admission_no = ?'
-        params.append(admission_no)
-
-    query += '''
-        GROUP BY students.id, terms.id
-        HAVING balance > 0
-    '''
-
-    outstanding = query_db(query, params)
-
-    # Calculate total balance
-    total_balance = sum(row['balance'] for row in outstanding)
-
-    html = render_template(
-        'outstanding_print.html',
-        outstanding=outstanding,
-        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        total_balance=total_balance
-    )
-
+@app.route('/reports/outstanding/pdf')
+@login_required
+def outstanding_report_pdf():
+    with get_db_cursor() as cur:
+        cur.execute('''
+            SELECT s.id, s.name, s.admission_no,
+                   SUM(t.amount) AS total_due,
+                   COALESCE(SUM(p.amount_paid), 0) AS total_paid,
+                   SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) AS balance
+            FROM students s
+            CROSS JOIN terms t
+            LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
+            GROUP BY s.id
+            HAVING SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) > 0
+            ORDER BY balance DESC
+        ''')
+        report_data = cur.fetchall()
+    
+    html = render_template('outstanding_report_pdf.html',
+                         report_data=report_data,
+                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    
     pdf = HTML(string=html).write_pdf()
-
+    
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
     return response
 
-@app.route('/outstanding/print/all_receipts')
-def print_all_student_receipts():
-    from datetime import datetime
-    from collections import defaultdict
-
-    # Fetch students with outstanding balances
-    outstanding = query_db('''
-        SELECT students.id AS student_id, students.name, students.admission_no,
-               terms.name AS term_name,
-               terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
-        FROM students
-        JOIN terms
-        LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
-        GROUP BY students.id, terms.id
-        HAVING balance > 0
-        ORDER BY students.name
-    ''')
-
-    students_data = defaultdict(list)
-    for row in outstanding:
-        students_data[row['student_id']].append(row)
-
-    # Generate QR codes
-    qr_data = {}
-    for student_id, records in students_data.items():
-        name = records[0]['name']
-        adm_no = records[0]['admission_no']
-        total_balance = sum(r['balance'] for r in records)
-        qr_text = f"Name: {name}\nAdm No: {adm_no}\nTotal Due: KES {total_balance:,.2f}"
-
-        # Generate QR Code
-        img = qrcode.make(qr_text)
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        qr_data[student_id] = qr_b64
-
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    html = render_template('outstanding_all_receipts.html',
-                           students_data=students_data,
-                           qr_data=qr_data,
-                           current_time=current_time)
-
-    pdf = HTML(string=html).write_pdf()
-    response = make_response(pdf)
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = 'inline; filename=all_student_receipts.pdf'
-    return response
-
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     init_db()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
