@@ -52,7 +52,7 @@
 {% for student_id, records in students_data.items() %}
 <div class="receipt">
     <div class="header">
-        <img src="{{ url_for('static', filename='images/school_logo.png') }}" alt="School Logo">
+        <img src="/static/images/LOGO.jpg" alt="School Logo" class="logo">
         <h2>Outstanding Balance Receipt</h2>
         <div class="timestamp">Date Printed: {{ current_time }}</div>
     </div>
