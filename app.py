@@ -343,22 +343,43 @@ def report_outstanding_balance():
 
 @app.route('/outstanding/print/pdf')
 def print_outstanding_pdf():
-    outstanding = query_db('''
-        SELECT students.name, students.admission_no, terms.name AS term_name,
-               terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
-        FROM students
-        JOIN terms
-        LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
-        GROUP BY students.id, terms.id
-        HAVING balance > 0
-    ''')
+    admission_no = request.args.get('admission_no', '').strip()
 
+    if admission_no:
+        # Generate outstanding balance for a specific student
+        outstanding = query_db('''
+            SELECT students.name, students.admission_no, terms.name AS term_name,
+                   terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
+            FROM students
+            JOIN terms
+            LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
+            WHERE students.admission_no = ?
+            GROUP BY students.id, terms.id
+            HAVING balance > 0
+        ''', (admission_no,))
+    else:
+        # Generate outstanding balances for all students
+        outstanding = query_db('''
+            SELECT students.name, students.admission_no, terms.name AS term_name,
+                   terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
+            FROM students
+            JOIN terms
+            LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
+            GROUP BY students.id, terms.id
+            HAVING balance > 0
+        ''')
+
+    # Render the template and generate the PDF
     html = render_template('outstanding_print.html', outstanding=outstanding)
     pdf = HTML(string=html).write_pdf()
 
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
+    if admission_no:
+        filename = f'outstanding_{admission_no}.pdf'
+    else:
+        filename = 'outstanding_balances.pdf'
+    response.headers['Content-Disposition'] = f'inline; filename={filename}'
     return response
 
 
