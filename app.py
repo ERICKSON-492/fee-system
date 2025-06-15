@@ -117,8 +117,7 @@ def add_term():
 
     return redirect(url_for('view_terms'))
 
- 
-@app.route('/add_payment', methods=['POST'])
+ @app.route('/add_payment', methods=['POST'])
 def add_payment():
     student_input = request.form.get('student_input', '').strip()
     term_id = request.form.get('term_id')
@@ -135,24 +134,22 @@ def add_payment():
         flash("Amount paid must be a valid number.")
         return redirect(url_for('view_payments'))
 
-    # Handle student input (e.g. "123 - John Doe")
-    try:
-        student_id_str = student_input.split(' - ')[0]
-        student_id = int(student_id_str)
-    except (IndexError, ValueError):
-        flash("Invalid student format. Use 'ID - Name'")
+    # Try to fetch student by ID or admission number
+    student = query_db(
+        'SELECT * FROM students WHERE id = ? OR admission_no = ?',
+        (student_input, student_input), one=True
+    )
+
+    if not student:
+        flash("Student not found. Please enter a valid ID or admission number.")
         return redirect(url_for('view_payments'))
 
-    student = query_db('SELECT * FROM students WHERE id = ?', (student_id,), one=True)
-    if not student:
-        flash("Student not found.")
-        return redirect(url_for('view_payments'))
+    student_id = student['id']
 
     # Ensure the term exists
     term = query_db('SELECT * FROM terms WHERE id = ?', (term_id,), one=True)
     if not term:
-        # If term not found, insert a fallback
-        term_name = f"Term {term_id}"  # Adjust as needed
+        term_name = f"Term {term_id}"
         term_amount = 0.0
         query_db('INSERT INTO terms (id, name, amount) VALUES (?, ?, ?)', (term_id, term_name, term_amount))
 
@@ -165,33 +162,6 @@ def add_payment():
     flash("Payment added successfully.")
     return redirect(url_for('view_payments'))
 
-    # If search query exists, add WHERE clause
-    if search_query:
-        base_query += '''
-            WHERE students.name LIKE ? OR
-                  students.admission_no LIKE ? OR
-                  terms.name LIKE ?
-        '''
-        like_query = f"%{search_query}%"
-        params = (like_query, like_query, like_query)
-
-    # Order the results by most recent payment
-    base_query += ' ORDER BY payments.payment_date DESC'
-
-    # Execute the final query
-    payments = query_db(base_query, params)
-
-    # Optional: You can also fetch student and term data for dropdowns/forms
-    students = query_db('SELECT * FROM students ORDER BY name')
-    terms = query_db('SELECT * FROM terms ORDER BY id DESC')
-
-    return render_template(
-        'payments.html',
-        payments=payments,
-        students=students,
-        terms=terms,
-        search_query=search_query
-    )
 @app.route('/payments/print')
 def print_payments():
     admission_no = request.args.get('admission_no', '').strip()
