@@ -24,7 +24,8 @@ db_pool = pool.ThreadedConnectionPool(
     password='admin',
     host='0.0.0.0',
     port='5000',
-    database='DATABASE_URL'
+    DATABASE_URL = os.environ.get("DATABASE_URL")
+
 )
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
