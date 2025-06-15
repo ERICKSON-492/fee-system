@@ -55,6 +55,28 @@
     </div>
   </div>
 
+  <!-- Payment Filter and Print Options -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <form method="get" action="{{ url_for('print_payments') }}" class="d-flex flex-wrap align-items-center">
+      <label class="me-2 mb-2">Student Admission No:</label>
+      <input type="text" name="admission_no" class="form-control me-2 mb-2" placeholder="e.g. ADM001">
+
+      <label class="me-2 mb-2">Term:</label>
+      <select name="term" class="form-select me-2 mb-2">
+        <option value="">-- All Terms --</option>
+        {% for term in terms %}
+          <option value="{{ term.name }}">{{ term.name }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit" class="btn btn-outline-secondary mb-2">🔍 Filter & Print</button>
+    </form>
+
+    <a href="{{ url_for('print_payments') }}" target="_blank" class="btn btn-outline-primary mb-2">
+      🖨️ Printable View
+    </a>
+  </div>
+
   <!-- Payment Records -->
   <div class="card">
     <div class="card-header bg-secondary text-white">Recent Payments</div>
@@ -69,6 +91,7 @@
               <th>Term</th>
               <th>Amount Paid</th>
               <th>Payment Date</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -82,33 +105,10 @@
                 <td>{{ payment.payment_date }}</td>
                 <td>
                   <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" class="btn btn-sm btn-outline-primary">
-                   View Receipt
+                    View Receipt
                   </a>
                 </td>
-
               </tr>
-                <div style="text-align: right; margin-bottom: 20px;">
-                   <a href="{{ url_for('print_payments') }}" target="_blank">
-                        <button>🖨️ Printable View</button>
-                   </a>
-                 </div>
-            <form method="get" action="{{ url_for('print_payments') }}" style="margin-bottom: 20px;">
-    <label>Student Admission No:</label>
-    <input type="text" name="admission_no" placeholder="e.g. ADM001">
-
-    <label>Term:</label>
-    <select name="term">
-        <option value="">-- All Terms --</option>
-        {% for term in terms %}
-            <option value="{{ term.name }}">{{ term.name }}</option>
-        {% endfor %}
-    </select>
-
-    <button type="submit">🔍 Filter & Print</button>
-</form>
-
-
-
             {% endfor %}
           </tbody>
         </table>
@@ -117,8 +117,5 @@
       {% endif %}
     </div>
   </div>
-
 </div>
 {% endblock %}
-
-
