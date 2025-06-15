@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Outstanding Balances</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+        h2 {
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #999;
+            padding: 6px 10px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h2>Outstanding Balances</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Student Name</th>
+                <th>Admission No</th>
+                <th>Term</th>
+                <th>Outstanding Balance (KES)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in outstanding %}
+            <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.admission_no }}</td>
+                <td>{{ row.term_name }}</td>
+                <td>{{ "{:,.2f}".format(row.balance) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
