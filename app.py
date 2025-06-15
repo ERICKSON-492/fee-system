@@ -364,6 +364,32 @@ def report_outstanding_balance():
     ''')
     return render_template('reports_outstanding_balance.html', data=data)
 
+
+@app.route('/outstanding/print/pdf')
+def print_outstanding_pdf():
+    # Fetch outstanding balances (adapt to your logic)
+    outstanding = query_db('''
+        SELECT students.name, students.admission_no, terms.name AS term_name,
+               terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
+        FROM students
+        JOIN terms
+        LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
+        GROUP BY students.id, terms.id
+        HAVING balance > 0
+    ''')
+
+    # Render the HTML
+    html = render_template('outstanding_print.html', outstanding=outstanding)
+
+    # Generate PDF
+    pdf = HTML(string=html).write_pdf()
+
+    # Return PDF
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
+    return response
+
 # ✅ Proper entry point
 if __name__ == "__main__":
     init_db()
