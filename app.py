@@ -118,7 +118,7 @@ def add_term():
     return redirect(url_for('view_terms'))
 
  @app.route('/add_payment', methods=['POST'])
-def add_payment():
+ def add_payment():
     student_input = request.form.get('student_input', '').strip()
     term_id = request.form.get('term_id')
     amount_paid = request.form.get('amount_paid')
