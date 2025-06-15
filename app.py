@@ -190,6 +190,18 @@ def add_payment():
         terms=terms,
         search_query=search_query
     )
+@app.route('/payments/print')
+def print_payments():
+    payments = query_db('''
+        SELECT payments.id, students.name AS student_name, students.admission_no,
+               terms.name AS term_name, payments.amount_paid, payments.payment_date
+        FROM payments
+        JOIN students ON payments.student_id = students.id
+        JOIN terms ON payments.term_id = terms.id
+        ORDER BY payments.payment_date DESC
+    ''')
+
+    return render_template('payments_printable.html', payments=payments)
 
 @app.route('/student/edit/<int:id>', methods=['POST'])
 def edit_student(id):
