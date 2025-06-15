@@ -382,6 +382,42 @@ def print_outstanding_pdf():
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
     return response
+@app.route('/outstanding/print/all_receipts')
+def print_all_student_receipts():
+    from datetime import datetime
+
+    # Get all students with outstanding balances
+    outstanding = query_db('''
+        SELECT students.id AS student_id, students.name, students.admission_no,
+               terms.name AS term_name,
+               terms.amount - IFNULL(SUM(payments.amount_paid), 0) AS balance
+        FROM students
+        JOIN terms
+        LEFT JOIN payments ON students.id = payments.student_id AND terms.id = payments.term_id
+        GROUP BY students.id, terms.id
+        HAVING balance > 0
+        ORDER BY students.name
+    ''')
+
+    # Group data per student
+    from collections import defaultdict
+    students_data = defaultdict(list)
+    for row in outstanding:
+        students_data[row['student_id']].append(row)
+
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Render full HTML with one receipt per student (page break between each)
+    html = render_template('outstanding_all_receipts.html',
+                           students_data=students_data,
+                           current_time=current_time)
+
+    pdf = HTML(string=html).write_pdf()
+
+    response = make_response(pdf)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = 'inline; filename=all_student_receipts.pdf'
+    return response
 
 
 if __name__ == "__main__":
