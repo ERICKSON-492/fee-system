@@ -5,7 +5,9 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response
 from weasyprint import HTML
 import io
-
+import qrcode
+import base64
+from io import BytesIO
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
 
@@ -382,11 +384,13 @@ def print_outstanding_pdf():
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
     return response
+
 @app.route('/outstanding/print/all_receipts')
 def print_all_student_receipts():
     from datetime import datetime
+    from collections import defaultdict
 
-    # Get all students with outstanding balances
+    # Fetch students with outstanding balances
     outstanding = query_db('''
         SELECT students.id AS student_id, students.name, students.admission_no,
                terms.name AS term_name,
@@ -399,25 +403,38 @@ def print_all_student_receipts():
         ORDER BY students.name
     ''')
 
-    # Group data per student
-    from collections import defaultdict
     students_data = defaultdict(list)
     for row in outstanding:
         students_data[row['student_id']].append(row)
 
+    # Generate QR codes
+    qr_data = {}
+    for student_id, records in students_data.items():
+        name = records[0]['name']
+        adm_no = records[0]['admission_no']
+        total_balance = sum(r['balance'] for r in records)
+        qr_text = f"Name: {name}\nAdm No: {adm_no}\nTotal Due: KES {total_balance:,.2f}"
+
+        # Generate QR Code
+        img = qrcode.make(qr_text)
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        qr_data[student_id] = qr_b64
+
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Render full HTML with one receipt per student (page break between each)
     html = render_template('outstanding_all_receipts.html',
                            students_data=students_data,
+                           qr_data=qr_data,
                            current_time=current_time)
 
     pdf = HTML(string=html).write_pdf()
-
     response = make_response(pdf)
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'inline; filename=all_student_receipts.pdf'
     return response
+
 
 
 if __name__ == "__main__":
