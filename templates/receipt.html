@@ -119,12 +119,12 @@
 
     <div class="receipt-container">
         <div class="header">
-            <img src="/static/images/LOGO.jpg" alt="School Logo" class="logo"> <!-- Optional logo -->
+            <img src="/static/images/LOGO.jpg" alt="School Logo" class="logo">
             <h1>ST PAUL RONGO DAY SECONDARY SCHOOL</h1>
-            <p>P.O.BOX 233,RONGO-40404<br>Tel: +254 700 000000 | Email:  rongomixeddayss15@gmail.com</p>
+            <p>P.O.BOX 233, RONGO-40404<br>Tel: +254 700 000000 | Email: rongomixeddayss15@gmail.com</p>
         </div>
 
-        <h2 style="text-align:center; margin-top: 10px; color:#2c3e50;">school fees payment</h2>
+        <h2 style="text-align:center; margin-top: 10px; color:#2c3e50;">School Fees Payment Receipt</h2>
 
         <div class="details">
             <table>
@@ -151,6 +151,18 @@
                 <tr>
                     <td class="label">Payment Date:</td>
                     <td>{{ payment.payment_date }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Total Fees:</td>
+                    <td>KES {{ "{:,.2f}".format(total_fees) }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Total Paid:</td>
+                    <td>KES {{ "{:,.2f}".format(total_paid) }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Outstanding Balance:</td>
+                    <td><strong style="color:red;">KES {{ "{:,.2f}".format(outstanding_balance) }}</strong></td>
                 </tr>
             </table>
         </div>
