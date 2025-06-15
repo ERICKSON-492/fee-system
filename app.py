@@ -240,10 +240,11 @@ def delete_payment(id):
 
 @app.route('/receipt/<int:payment_id>')
 def view_receipt(payment_id):
+    # Get specific payment record with student and term info
     payment = query_db('''
-        SELECT payments.id, students.name AS student_name, students.admission_no,
-               students.form, terms.name AS term_name, terms.amount AS term_amount,
-               payments.amount_paid, payments.payment_date
+        SELECT payments.id, students.id AS student_id, students.name AS student_name,
+               students.admission_no, students.form, terms.name AS term_name,
+               terms.amount AS term_amount, payments.amount_paid, payments.payment_date
         FROM payments
         JOIN students ON payments.student_id = students.id
         JOIN terms ON payments.term_id = terms.id
@@ -253,7 +254,27 @@ def view_receipt(payment_id):
     if not payment:
         return "Receipt not found", 404
 
-    return render_template('receipt.html', payment=payment, current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    student_id = payment['student_id']
+    term_amount = payment['term_amount']
+
+    # Calculate total paid by student across all payments
+    total_paid_data = query_db('''
+        SELECT SUM(amount_paid) AS total_paid
+        FROM payments
+        WHERE student_id = ?
+    ''', (student_id,), one=True)
+    
+    total_paid = total_paid_data['total_paid'] or 0
+    outstanding_balance = term_amount - total_paid
+
+    return render_template(
+        'receipt.html',
+        payment=payment,
+        total_fees=term_amount,
+        total_paid=total_paid,
+        outstanding_balance=outstanding_balance,
+        current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 @app.route('/reports/outstanding_balance')
 def report_outstanding_balance():
