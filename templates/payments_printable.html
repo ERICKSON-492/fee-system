@@ -1,1 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Printable Payment Records</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        th {
+            background-color: #ecf0f1;
+            color: #2c3e50;
+        }
+        .print-btn {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .print-btn button {
+            padding: 10px 20px;
+            background-color: #2980b9;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="print-btn">
+    <button onclick="window.print()">🖨️ Print This Page</button>
+</div>
+
+<h1>Payment Records</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Receipt No</th>
+            <th>Student Name</th>
+            <th>Admission No</th>
+            <th>Term</th>
+            <th>Amount Paid</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for payment in payments %}
+        <tr>
+            <td>#{{ payment.id }}</td>
+            <td>{{ payment.student_name }}</td>
+            <td>{{ payment.admission_no }}</td>
+            <td>{{ payment.term_name }}</td>
+            <td>KES {{ "{:,.2f}".format(payment.amount_paid) }}</td>
+            <td>{{ payment.payment_date }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>
 
