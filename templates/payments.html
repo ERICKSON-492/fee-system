@@ -27,8 +27,10 @@
       <form method="POST" action="{{ url_for('add_payment') }}">
         <div class="row mb-3">
           <div class="col-md-6">
-            <label class="form-label">Student (ID - Name)</label>
-            <input type="text" name="student_input" class="form-control" required placeholder="e.g. 1 - John Doe">
+            
+            <label class="form-label">Student (ID or Admission No)</label>
+            <input type="text" name="student_input" class="form-control" required placeholder="e.g. 1 or ADM00123">
+
           </div>
           <div class="col-md-3">
             <label class="form-label">Term</label>
