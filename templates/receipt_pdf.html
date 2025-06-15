@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Receipt #{{ payment.receipt_number }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .school-name { font-size: 18px; font-weight: bold; }
+        .receipt-info { margin-top: 20px; }
+        .student-info { margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .qr-code { width: 100px; height: 100px; float: right; }
+        .footer { margin-top: 30px; }
+        .signature { margin-top: 50px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="school-name">School Name</div>
+        <div>123 School Street, City, Country</div>
+        <div class="receipt-info">
+            <strong>Receipt #{{ payment.receipt_number }}</strong><br>
+            Date: {{ payment.payment_date }} | Printed: {{ generated_at }}
+        </div>
+    </div>
+
+    <div class="student-info">
+        <div style="float: left; width: 70%;">
+            <strong>Student Information</strong><br>
+            Name: {{ payment.student_name }}<br>
+            Admission No: {{ payment.admission_no }}<br>
+            Form/Class: {{ payment.form }}
+        </div>
+        <div style="float: right; width: 30%; text-align: right;">
+            <img src="data:image/png;base64,{{ qr_code }}" class="qr-code">
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ payment.term_name }} Fee</td>
+                <td>{{ "%.2f"|format(payment.amount_paid) }}</td>
+            </tr>
+            <tr>
+                <td><strong>Total Paid</strong></td>
+                <td><strong>{{ "%.2f"|format(payment.amount_paid) }}</strong></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <div style="float: left; width: 50%;">
+            <strong>Payment Summary</strong><br>
+            Total Fees: {{ "%.2f"|format(payment.term_amount) }}<br>
+            Total Paid: {{ "%.2f"|format(total_paid) }}<br>
+            Outstanding Balance: {{ "%.2f"|format(outstanding_balance) }}
+        </div>
+        <div style="float: right; width: 50%; text-align: right;">
+            <div class="signature">
+                <p>Received by: ________________________</p>
+                <p>Signature: ________________________</p>
+            </div>
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+</body>
+</html>
