@@ -1,4 +1,6 @@
 import os
+from psycopg2 import pool
+
 db_pool = pool.ThreadedConnectionPool(
     minconn=1,
     maxconn=10,
@@ -15,6 +17,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 app = Flask(__name__)
+db_pool = pool.ThreadedConnectionPool(
+    minconn=1,
+    maxconn=10,
+    user='admin',
+    password='admin',
+    host='0.0.0.0',
+    port='5000',
+    database='DATABASE_URL'
+)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
 # Database configuration
