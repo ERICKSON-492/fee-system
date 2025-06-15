@@ -1,87 +1,48 @@
 {% extends "base.html" %}
 
+{% block title %}Students{% endblock %}
+{% block header %}Student Management{% endblock %}
+
 {% block content %}
-<div class="container mt-4">
+<div class="mb-3 d-flex justify-content-between">
+    <form class="d-flex" method="GET" action="{{ url_for('view_students') }}">
+        <input class="form-control me-2" type="search" name="search" placeholder="Search students..." value="{{ search }}">
+        <button class="btn btn-outline-success" type="submit">Search</button>
+    </form>
+    <a href="{{ url_for('add_student') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Add Student
+    </a>
+</div>
 
-  <!-- Flash Messages -->
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="alert alert-info">
-        {% for message in messages %}
-          <div>{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
-
-  <!-- Add Student Form -->
-  <div class="card mb-4">
-    <div class="card-header bg-primary text-white">Add New Student</div>
-    <div class="card-body">
-      <form method="POST" action="{{ url_for('add_student') }}">
-        <div class="row g-3">
-          <div class="col-md-4">
-            <label class="form-label">Student ID / Admission No</label>
-            <input type="number" name="admission_no" class="form-control" required placeholder="Enter student ID">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Student Name</label>
-            <input type="text" name="name" class="form-control" required placeholder="Enter student name">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Form/Class</label>
-            <input type="text" name="form" class="form-control" required placeholder="Enter form/class">
-          </div>
-        </div>
-        <button type="submit" class="btn btn-success mt-3">Add Student</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Students Table -->
-  <div class="card">
-    <div class="card-header bg-secondary text-white">Student Records</div>
-    <div class="card-body">
-      {% if students %}
-        <table class="table table-bordered table-striped align-middle">
-          <thead class="table-dark">
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
             <tr>
-              <th>#</th>
-              <th>Admission No</th>
-              <th>Name</th>
-              <th>Form</th>
-              <th>Actions</th>
+                <th>Admission No</th>
+                <th>Name</th>
+                <th>Form</th>
+                <th>Actions</th>
             </tr>
-          </thead>
-          <tbody>
+        </thead>
+        <tbody>
             {% for student in students %}
-              <tr>
-                <form method="POST" action="{{ url_for('edit_student', id=student.id) }}">
-                  <td>{{ loop.index }}</td>
-                  <td>{{ student.admission_no }}</td>
-                  <td>
-                    <input type="text" name="name" value="{{ student.name }}" class="form-control" required>
-                  </td>
-                  <td>
-                    <input type="text" name="form" value="{{ student.form }}" class="form-control" required>
-                  </td>
-                  <td class="d-flex gap-2">
-                    <button type="submit" class="btn btn-warning btn-sm">Save</button>
-                </form>
-                    <form method="POST" action="{{ url_for('delete_student', id=student.id) }}" onsubmit="return confirm('Are you sure you want to delete this student?')">
-                      <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            <tr>
+                <td>{{ student.admission_no }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.form }}</td>
+                <td>
+                    <a href="{{ url_for('edit_student', id=student.id) }}" class="btn btn-sm btn-warning">
+                        <i class="bi bi-pencil"></i>
+                    </a>
+                    <form method="POST" action="{{ url_for('delete_student', id=student.id) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </form>
-                  </td>
-              </tr>
+                </td>
+            </tr>
             {% endfor %}
-          </tbody>
-        </table>
-      {% else %}
-        <p>No students found.</p>
-      {% endif %}
-    </div>
-  </div>
-
+        </tbody>
+    </table>
 </div>
 {% endblock %}
-
