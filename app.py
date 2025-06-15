@@ -3,7 +3,8 @@ import re
 import sqlite3
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash
-
+from weasyprint import HTML
+import io
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
 
@@ -218,6 +219,45 @@ def print_payments():
     payments = query_db(query, params)
 
     return render_template('payments_printable.html', payments=payments)
+@app.route('/payments/print/pdf')
+def export_payments_pdf():
+    admission_no = request.args.get('admission_no', '').strip()
+    term = request.args.get('term', '').strip()
+
+    query = '''
+        SELECT payments.id, students.name AS student_name, students.admission_no,
+               terms.name AS term_name, payments.amount_paid, payments.payment_date
+        FROM payments
+        JOIN students ON payments.student_id = students.id
+        JOIN terms ON payments.term_id = terms.id
+        WHERE 1 = 1
+    '''
+    params = []
+
+    if admission_no:
+        query += " AND students.admission_no = ?"
+        params.append(admission_no)
+
+    if term:
+        query += " AND terms.name = ?"
+        params.append(term)
+
+    query += " ORDER BY payments.payment_date DESC"
+
+    payments = query_db(query, params)
+
+    # Render HTML
+    rendered_html = render_template('payments_printable.html', payments=payments)
+
+    # Convert HTML to PDF
+    pdf_file = HTML(string=rendered_html).write_pdf()
+
+    # Serve the PDF file
+    response = make_response(pdf_file)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = 'inline; filename=payments_report.pdf'
+    return response
+
 
 @app.route('/student/edit/<int:id>', methods=['POST'])
 def edit_student(id):
