@@ -2,24 +2,19 @@
 weasyprint==57.2
 qrcode[pil]==7.4.2
 
-werkzeug==2.3.6
-# Core dependencies
+# Core web framework
 Flask==3.0.2
+Werkzeug==3.0.1  # Use only one Werkzeug version (3.x for Flask 3.x)
 gunicorn==21.2.0
-Werkzeug==3.0.1
 
-# Database
-psycopg2-binary==2.9.9  # Use binary version for Python 3.13 compatibility
+# Database (use binary for Python 3.13)
+psycopg2-binary==2.9.9
 
-# Environment and security
+# PDF generation (WeasyPrint)
+weasyprint==57.2
+
+# QR code generation
+qrcode[pil]==7.4.2
+
+# Environment & security
 python-dotenv==1.0.1
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.5
-
-# Optional but recommended
-click==8.1.7
-itsdangerous==2.1.2
-Jinja2==3.1.3
-MarkupSafe==2.1.5
-SQLAlchemy==2.0.25
-alembic==1.13.1
