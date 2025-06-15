@@ -14,6 +14,15 @@
         h1.centered { text-align: center; }
         td.centered { text-align: center; }
     </style>
+    @media print {
+    .print-btn {
+        display: none;
+    }
+    body {
+        background: white;
+    }
+}
+
 </head>
 <body>
     <h1 class="centered">Outstanding Fees per Student</h1>
