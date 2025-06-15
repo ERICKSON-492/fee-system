@@ -1,6 +1,6 @@
 flask==2.3.2
 gunicorn==20.1.0
-psycopg[binary]==3.1.18  # Updated to psycopg3
+psycopg[binary]==3.2.9  # Latest stable version that works with Python 3.13
 weasyprint==57.2
 qrcode[pil]==7.4.2
 werkzeug==2.3.6
