@@ -729,7 +729,7 @@ def generate_receipt_pdf(payment_id):
 def outstanding_report_pdf():
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get report data with proper type conversion
+            # Get report data
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no,
                        SUM(t.amount)::float AS total_due,
@@ -756,9 +756,10 @@ def outstanding_report_pdf():
                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                 logo_base64=logo_base64)
             
-            pdf = HTML(string=html).write_pdf()
+            # Generate PDF with proper WeasyPrint initialization
+            pdf_bytes = HTML(string=html).write_pdf()
             
-            response = make_response(pdf)
+            response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
             return response
@@ -766,7 +767,7 @@ def outstanding_report_pdf():
     except Exception as e:
         flash('Error generating PDF report', 'danger')
         print(f"Error in outstanding_report_pdf: {str(e)}")
-        return redirect(url_for('outstanding_report'))
+        return redirect(url_for('outstanding_report'))        
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
