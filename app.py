@@ -729,11 +729,12 @@ def generate_receipt_pdf(payment_id):
 def outstanding_report_pdf():
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # Get report data with proper type conversion
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no,
-                       SUM(t.amount) AS total_due,
-                       COALESCE(SUM(p.amount_paid), 0) AS total_paid,
-                       SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) AS balance
+                       SUM(t.amount)::float AS total_due,
+                       COALESCE(SUM(p.amount_paid), 0)::float AS total_paid,
+                       (SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0))::float AS balance
                 FROM students s
                 CROSS JOIN terms t
                 LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
@@ -742,22 +743,30 @@ def outstanding_report_pdf():
                 ORDER BY balance DESC
             ''')
             report_data = cur.fetchall()
-        
-        html = render_template('outstanding_report_pdf.html',
-                             report_data=report_data,
-                             current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        
-        pdf = HTML(string=html).write_pdf()
-        
-        response = make_response(pdf)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
-        return response
+
+            if not report_data:
+                flash('No outstanding balances found', 'info')
+                return redirect(url_for('outstanding_report'))
+
+            # Get logo as base64
+            logo_base64 = get_logo_base64()
+
+            html = render_template('outstanding_report_pdf.html',
+                                report_data=report_data,
+                                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                logo_base64=logo_base64)
+            
+            pdf = HTML(string=html).write_pdf()
+            
+            response = make_response(pdf)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
+            return response
+            
     except Exception as e:
         flash('Error generating PDF report', 'danger')
         print(f"Error in outstanding_report_pdf: {str(e)}")
         return redirect(url_for('outstanding_report'))
-
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
