@@ -1,78 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Receipt #{{ payment.receipt_number }}</title>
     <style>
-        body { font-family: Arial, sans-serif; }
-        .header { text-align: center; margin-bottom: 20px; }
-        .school-name { font-size: 18px; font-weight: bold; }
-        .receipt-info { margin-top: 20px; }
-        .student-info { margin: 20px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .qr-code { width: 100px; height: 100px; float: right; }
-        .footer { margin-top: 30px; }
-        .signature { margin-top: 50px; }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h2 {
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .header p {
+            color: #7f8c8d;
+        }
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        .student-info, .receipt-info {
+            width: 48%;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        .table th, .table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .table th {
+            background-color: #f2f2f2;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .signature-area {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 50px;
+        }
+        .qr-code {
+            text-align: center;
+            width: 150px;
+        }
+        .signature {
+            width: 200px;
+            text-align: center;
+        }
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .total-row {
+            font-weight: bold;
+        }
+        .balance-row {
+            font-weight: bold;
+            color: #e74c3c;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="school-name">School Name</div>
-        <div>123 School Street, City, Country</div>
+        <h2>SCHOOL FEES PAYMENT RECEIPT</h2>
+        <p>Official Receipt</p>
+    </div>
+    
+    <div class="info-section">
+        <div class="school-info">
+            <h4>Example High School</h4>
+            <p>123 Education Road<br>
+            Nairobi, Kenya<br>
+            Phone: +254 700 123456<br>
+            Email: info@examplehigh.edu</p>
+        </div>
+        
         <div class="receipt-info">
-            <strong>Receipt #{{ payment.receipt_number }}</strong><br>
-            Date: {{ payment.payment_date }} | Printed: {{ generated_at }}
+            <p><strong>Receipt No:</strong> {{ payment.receipt_number }}</p>
+            <p><strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}</p>
+            <p><strong>Time:</strong> {{ current_time.split(' ')[1] }}</p>
         </div>
     </div>
-
-    <div class="student-info">
-        <div style="float: left; width: 70%;">
-            <strong>Student Information</strong><br>
-            Name: {{ payment.student_name }}<br>
-            Admission No: {{ payment.admission_no }}<br>
-            Form/Class: {{ payment.form }}
-        </div>
-        <div style="float: right; width: 30%; text-align: right;">
-            <img src="data:image/png;base64,{{ qr_code }}" class="qr-code">
-        </div>
-        <div style="clear: both;"></div>
+    
+    <div class="student-details">
+        <h4>Student Information</h4>
+        <p><strong>Name:</strong> {{ payment.student_name }}</p>
+        <p><strong>Admission No:</strong> {{ payment.admission_no }}</p>
+        <p><strong>Form:</strong> {{ payment.form }}</p>
     </div>
-
-    <table>
+    
+    <table class="table">
         <thead>
             <tr>
                 <th>Description</th>
-                <th>Amount</th>
+                <th class="text-right">Amount (KSh)</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td>{{ payment.term_name }} Fee</td>
-                <td>{{ "%.2f"|format(payment.amount_paid) }}</td>
+                <td>Payment for {{ payment.term_name }}</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
             </tr>
-            <tr>
-                <td><strong>Total Paid</strong></td>
-                <td><strong>{{ "%.2f"|format(payment.amount_paid) }}</strong></td>
+            <tr class="total-row">
+                <td class="text-right">Total Paid:</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+            </tr>
+            <tr class="balance-row">
+                <td class="text-right">Outstanding Balance:</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(outstanding_balance) }}</td>
             </tr>
         </tbody>
     </table>
-
+    
+    <div class="signature-area">
+        <div class="qr-code">
+            <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" width="120">
+            <p>Scan to verify receipt</p>
+        </div>
+        
+        <div class="signature">
+            <p class="signature-line">_________________________</p>
+            <p><strong>Authorized Signatory</strong></p>
+            <p>School Bursar</p>
+        </div>
+    </div>
+    
     <div class="footer">
-        <div style="float: left; width: 50%;">
-            <strong>Payment Summary</strong><br>
-            Total Fees: {{ "%.2f"|format(payment.term_amount) }}<br>
-            Total Paid: {{ "%.2f"|format(total_paid) }}<br>
-            Outstanding Balance: {{ "%.2f"|format(outstanding_balance) }}
-        </div>
-        <div style="float: right; width: 50%; text-align: right;">
-            <div class="signature">
-                <p>Received by: ________________________</p>
-                <p>Signature: ________________________</p>
-            </div>
-        </div>
-        <div style="clear: both;"></div>
+        <p>This is an official receipt from Example High School. Thank you for your payment.</p>
     </div>
 </body>
 </html>
