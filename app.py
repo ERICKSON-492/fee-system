@@ -653,12 +653,19 @@ def outstanding_report():
                 ORDER BY balance DESC
             ''')
             report_data = cur.fetchall()
+            
+            # Get current datetime
+            current_datetime = datetime.now()
+            
     except Exception as e:
         flash('Error generating report', 'danger')
         print(f"Error in outstanding_report: {str(e)}")
         report_data = []
+        current_datetime = datetime.now()
     
-    return render_template('outstanding_report.html', report_data=report_data)
+    return render_template('outstanding_report.html', 
+                         report_data=report_data,
+                         current_datetime=current_datetime)
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
