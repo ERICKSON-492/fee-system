@@ -47,7 +47,7 @@
 
 <div class="card">
     <div class="card-header">
-        Students with Outstanding Balances - {{ datetime.now().strftime('%Y-%m-%d') }}
+        Students with Outstanding Balances - {{ current_datetime.strftime('%Y-%m-%d') }}
     </div>
     <div class="card-body">
         {% if report_data %}
