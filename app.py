@@ -571,8 +571,9 @@ def delete_payment(id):
 def view_receipt(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # Modified query to explicitly include student_id
             cur.execute('''
-                SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
+                SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
                        t.name AS term_name, t.amount AS term_amount
                 FROM payments p
@@ -586,14 +587,18 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
+            # Calculate total paid by this student
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) FROM payments
+                SELECT COALESCE(SUM(amount_paid), 0) 
+                FROM payments
                 WHERE student_id = %s
             ''', (payment['student_id'],))
             total_paid = cur.fetchone()[0]
             
+            # Calculate outstanding balance
             outstanding_balance = float(payment['term_amount']) - total_paid
             
+            # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
@@ -615,7 +620,6 @@ def view_receipt(payment_id):
                          outstanding_balance=outstanding_balance,
                          current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                          qr_code=qr_b64)
-
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
