@@ -572,7 +572,6 @@ def delete_payment(id):
         print(f"Error in delete_payment: {str(e)}")
     
     return redirect(url_for('view_payments'))
-
 @app.route('/receipt/<int:payment_id>')
 @login_required
 def view_receipt(payment_id):
@@ -594,41 +593,48 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
-            # Calculate total paid by this student - ensure consistent types
+            # Convert amounts to float for consistent calculations
+            term_amount = float(payment['term_amount'])
+            amount_paid = float(payment['amount_paid'])
+            
+            # Calculate total paid by this student
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) 
+                SELECT COALESCE(SUM(amount_paid), 0)::float
                 FROM payments
                 WHERE student_id = %s
             ''', (payment['student_id'],))
-            total_paid = float(cur.fetchone()[0])  # Convert to float
+            total_paid = float(cur.fetchone()[0])
             
-            # Calculate outstanding balance - ensure both values are same type
-            term_amount = float(payment['term_amount'])
+            # Calculate outstanding balance
             outstanding_balance = term_amount - total_paid
             
             # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
-            Amount: {payment['amount_paid']:.2f}
+            Amount: {amount_paid:.2f}
             Date: {payment['payment_date']}
             """
             qr_img = qrcode.make(qr_data)
             qr_buffer = BytesIO()
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+            
+            # Get logo as base64
+            logo_base64 = get_logo_base64()
+            
     except Exception as e:
         flash('Error generating receipt', 'danger')
         print(f"Error in view_receipt: {str(e)}")
         return redirect(url_for('view_payments'))
     
     return render_template('receipt.html',
-                         payment=payment,
-                         total_paid=total_paid,
-                         outstanding_balance=outstanding_balance,
-                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                         qr_code=qr_b64)
-
+                        payment=payment,
+                        total_paid=total_paid,
+                        outstanding_balance=outstanding_balance,
+                        current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        qr_code=qr_b64,
+                        logo_base64=logo_base64)
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
