@@ -1,74 +1,98 @@
 {% extends "base.html" %}
 
 {% block title %}Receipt #{{ payment.receipt_number }}{% endblock %}
-{% block header %}Payment Receipt{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-body">
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <h4>School Name</h4>
-                <p>123 School Street<br>City, Country</p>
-            </div>
-            <div class="col-md-6 text-end">
-                <h4>Receipt #{{ payment.receipt_number }}</h4>
-                <p>Date: {{ payment.payment_date }}<br>
-                Printed: {{ current_time }}</p>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-receipt"></i> Payment Receipt</h2>
+    <div>
+        <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Payments
+        </a>
+        <a href="{{ url_for('generate_receipt_pdf', payment_id=payment.id) }}" class="btn btn-primary">
+            <i class="bi bi-download"></i> Download PDF
+        </a>
+    </div>
+</div>
+
+<div class="receipt-container">
+    <div class="text-center mb-4">
+        <h3>SCHOOL FEES PAYMENT RECEIPT</h3>
+        <p class="text-muted">Official Receipt</p>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h5>School Information</h5>
+            <p>
+                <strong>Example High School</strong><br>
+                123 Education Road<br>
+                Nairobi, Kenya<br>
+                Phone: +254 700 123456<br>
+                Email: info@examplehigh.edu
+            </p>
+        </div>
+        <div class="col-md-6 text-end">
+            <h5>Receipt Details</h5>
+            <p>
+                <strong>Receipt No:</strong> {{ payment.receipt_number }}<br>
+                <strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}<br>
+                <strong>Time:</strong> {{ current_time.split(' ')[1] }}
+            </p>
+        </div>
+    </div>
+    
+    <div class="mb-4">
+        <h5>Student Information</h5>
+        <p>
+            <strong>Name:</strong> {{ payment.student_name }}<br>
+            <strong>Admission No:</strong> {{ payment.admission_no }}<br>
+            <strong>Form:</strong> {{ payment.form }}
+        </p>
+    </div>
+    
+    <table class="table table-bordered mb-4">
+        <thead class="table-light">
+            <tr>
+                <th>Description</th>
+                <th>Amount (KSh)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Payment for {{ payment.term_name }}</td>
+                <td class="text-end">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+            </tr>
+            <tr>
+                <td class="text-end"><strong>Total Paid:</strong></td>
+                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(payment.amount_paid) }}</strong></td>
+            </tr>
+            <tr>
+                <td class="text-end"><strong>Outstanding Balance:</strong></td>
+                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(outstanding_balance) }}</strong></td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="border p-3 text-center">
+                <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 120px;">
+                <p class="mt-2 mb-0"><small>Scan to verify receipt</small></p>
             </div>
         </div>
-
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <h5>Student Information</h5>
-                <p>
-                    <strong>Name:</strong> {{ payment.student_name }}<br>
-                    <strong>Admission No:</strong> {{ payment.admission_no }}<br>
-                    <strong>Form/Class:</strong> {{ payment.form }}
+        <div class="col-md-6 text-end">
+            <div class="mt-5 pt-3">
+                <p class="border-top pt-3">
+                    <strong>Authorized Signatory</strong><br>
+                    <small>School Bursar</small>
                 </p>
-            </div>
-            <div class="col-md-4 text-center">
-                <img src="data:image/png;base64,{{ qr_code }}" class="receipt-qr img-fluid" alt="QR Code">
             </div>
         </div>
-
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th>Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{{ payment.term_name }} Fee</td>
-                    <td>{{ "%.2f"|format(payment.amount_paid) }}</td>
-                </tr>
-                <tr>
-                    <td><strong>Total Paid</strong></td>
-                    <td><strong>{{ "%.2f"|format(payment.amount_paid) }}</strong></td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="row mt-4">
-            <div class="col-md-6">
-                <h5>Payment Summary</h5>
-                <p>
-                    <strong>Total Fees:</strong> {{ "%.2f"|format(payment.term_amount) }}<br>
-                    <strong>Total Paid:</strong> {{ "%.2f"|format(total_paid) }}<br>
-                    <strong>Outstanding Balance:</strong> {{ "%.2f"|format(outstanding_balance) }}
-                </p>
-            </div>
-            <div class="col-md-6 text-end">
-                <p class="mt-4">
-                    <strong>Received by:</strong> ________________________
-                </p>
-                <a href="{{ url_for('generate_receipt_pdf', payment_id=payment.id) }}" class="btn btn-primary">
-                    <i class="bi bi-download"></i> Download PDF
-                </a>
-            </div>
-        </div>
+    </div>
+    
+    <div class="text-center mt-4 text-muted">
+        <small>This is an official receipt from Example High School. Thank you for your payment.</small>
     </div>
 </div>
 {% endblock %}
