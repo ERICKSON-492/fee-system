@@ -1,153 +1,140 @@
-{% extends "base.html" %}
-
-{% block title %}Outstanding Balance Receipt{% endblock %}
-
-{% block extra_css %}
-<style>
-    body {
-        background-color: white !important;
-    }
-    .compact-receipt {
-        width: 80mm;
-        min-height: 100mm;
-        padding: 5mm;
-        margin: 0 auto;
-        font-family: Arial, sans-serif;
-    }
-    .receipt-header {
-        text-align: center;
-        margin-bottom: 5mm;
-    }
-    .receipt-logo {
-        height: 15mm;
-        margin-bottom: 2mm;
-    }
-    .receipt-title {
-        font-size: 14pt;
-        font-weight: bold;
-        margin-bottom: 1mm;
-    }
-    .receipt-subtitle {
-        font-size: 10pt;
-        color: #666;
-        margin-bottom: 3mm;
-    }
-    .receipt-body {
-        font-size: 10pt;
-    }
-    .receipt-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 3mm 0;
-        font-size: 9pt;
-    }
-    .receipt-table th, 
-    .receipt-table td {
-        padding: 2mm;
-        border: 0.5px solid #ddd;
-    }
-    .receipt-table th {
-        background-color: #f5f5f5;
-    }
-    .text-right {
-        text-align: right;
-    }
-    .qr-code {
-        width: 25mm;
-        height: 25mm;
-        margin: 2mm auto;
-    }
-    .signature-line {
-        border-top: 1px solid #000;
-        width: 50mm;
-        margin: 5mm auto 1mm;
-    }
-    @media print {
-        .no-print {
-            display: none !important;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Outstanding Balance Receipt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            width: 148mm;
+            height: 210mm;
+            margin: 0;
+            padding: 10mm;
+            box-sizing: border-box;
+            font-size: 10pt;
         }
-        body, .compact-receipt {
-            width: 80mm !important;
-            margin: 0 !important;
-            padding: 5mm !important;
+        .header {
+            text-align: center;
+            margin-bottom: 8mm;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5mm;
         }
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="compact-receipt">
-    <!-- Header -->
-    <div class="receipt-header">
+        .logo {
+            height: 20mm;
+            margin-bottom: 3mm;
+        }
+        .title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 2mm 0;
+        }
+        .details {
+            display: flex;
+            justify-content: space-between;
+            margin: 5mm 0;
+            font-size: 9pt;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 5mm 0;
+            font-size: 9pt;
+        }
+        .table th, .table td {
+            padding: 3mm 2mm;
+            border: 0.5pt solid #ddd;
+        }
+        .table th {
+            background-color: #f5f5f5;
+        }
+        .balance-highlight {
+            font-weight: bold;
+            background-color: #fff2f2;
+        }
+        .qr-container {
+            width: 35mm;
+            margin: 5mm auto;
+            text-align: center;
+        }
+        .signature {
+            text-align: right;
+            margin-top: 10mm;
+        }
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 50mm;
+            display: inline-block;
+            margin-bottom: 2mm;
+        }
+        .footer {
+            font-size: 8pt;
+            color: #666;
+            text-align: center;
+            margin-top: 5mm;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
         {% if logo_base64 %}
-        <img src="data:image/png;base64,{{ logo_base64 }}" class="receipt-logo">
+        <img src="data:image/png;base64,{{ logo_base64 }}" class="logo" alt="School Logo">
         {% endif %}
-        <div class="receipt-title">OUTSTANDING BALANCE NOTICE</div>
-        <div class="receipt-subtitle">Example High School</div>
+        <div class="title">OUTSTANDING BALANCE NOTICE</div>
+        <div>Example High School</div>
     </div>
-    
-    <!-- Student Info -->
-    <div class="receipt-body">
-        <div><strong>Student:</strong> {{ student.name }}</div>
-        <div><strong>Adm No:</strong> {{ student.admission_no }}</div>
-        <div><strong>Form:</strong> {{ student.form }}</div>
-        <div><strong>Date:</strong> {{ current_date }}</div>
+
+    <div class="details">
+        <div>
+            <strong>Date:</strong> {{ current_date }}<br>
+            <strong>Reference:</strong> BAL-{{ student.admission_no }}-{{ current_date.replace('/', '') }}
+        </div>
+        <div>
+            <strong>Student ID:</strong> {{ student.admission_no }}<br>
+            <strong>Form:</strong> {{ student.form }}
+        </div>
     </div>
-    
-    <!-- Balance Summary -->
-    <table class="receipt-table">
-        <tr>
-            <th>Description</th>
-            <th class="text-right">Amount (KSh)</th>
-        </tr>
-        <tr>
-            <td>Total Fees Due</td>
-            <td class="text-right">{{ "KSh{:,.2f}".format(student.total_due) }}</td>
-        </tr>
-        <tr>
-            <td>Total Paid</td>
-            <td class="text-right">{{ "KSh{:,.2f}".format(student.total_paid) }}</td>
-        </tr>
-        <tr style="font-weight: bold; background-color: #fff2f2;">
-            <td>OUTSTANDING BALANCE</td>
-            <td class="text-right">{{ "KSh{:,.2f}".format(student.balance) }}</td>
-        </tr>
+
+    <div style="margin-bottom: 5mm;">
+        <strong>Student Name:</strong> {{ student.name }}
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th>Amount (KSh)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Total Fees Due</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(student.total_due) }}</td>
+            </tr>
+            <tr>
+                <td>Total Payments Made</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(student.total_paid) }}</td>
+            </tr>
+            <tr class="balance-highlight">
+                <td><strong>OUTSTANDING BALANCE</strong></td>
+                <td class="text-right"><strong>{{ "KSh{:,.2f}".format(student.balance) }}</strong></td>
+            </tr>
+        </tbody>
     </table>
-    
-    <!-- QR Code -->
-    <div class="text-center">
-        <img src="data:image/png;base64,{{ qr_code }}" class="qr-code">
-        <div style="font-size: 8pt;">Scan to verify balance</div>
+
+    <div class="qr-container">
+        <img src="data:image/png;base64,{{ qr_code }}" style="width: 100%;" alt="QR Code">
+        <div>Scan to verify</div>
     </div>
-    
-    <!-- Signature -->
-    <div class="text-center" style="margin-top: 5mm;">
+
+    <div class="signature">
         <div class="signature-line"></div>
-        <div style="font-size: 9pt;">Authorized Signatory</div>
+        <div>Authorized Signatory</div>
+        <div>School Bursar</div>
     </div>
-    
-    <!-- Footer -->
-    <div class="text-center" style="font-size: 8pt; margin-top: 3mm; color: #666;">
-        Please settle your balance by {{ (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y') }}
+
+    <div class="footer">
+        Please settle your balance by {{ (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y') }}<br>
+        For inquiries: accounts@examplehigh.edu | Phone: +254 700 123456
     </div>
-</div>
-
-<!-- Print Button -->
-<div class="text-center no-print mt-3">
-    <button onclick="window.print()" class="btn btn-sm btn-primary">
-        <i class="bi bi-printer"></i> Print Receipt
-    </button>
-    <a href="{{ url_for('outstanding_report') }}" class="btn btn-sm btn-outline-secondary ms-2">
-        <i class="bi bi-arrow-left"></i> Back to Report
-    </a>
-</div>
-
-<script>
-    // Auto-print when page loads (optional)
-    window.onload = function() {
-        setTimeout(function() {
-            window.print();
-        }, 500);
-    };
-</script>
-{% endblock %}
+</body>
+</html>
