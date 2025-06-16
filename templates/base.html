@@ -3,54 +3,186 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fee Management System - {% block title %}{% endblock %}</title>
+    <title>{% block title %}School Fees Management{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --accent-color: #e74c3c;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
         .sidebar {
+            background-color: var(--dark-color);
+            color: white;
             min-height: 100vh;
-            background-color: #f8f9fa;
+            position: fixed;
+            width: 250px;
+            transition: all 0.3s;
         }
-        .content {
+        
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.2rem;
+            border-radius: 0.25rem;
+        }
+        
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .sidebar .nav-link i {
+            margin-right: 10px;
+        }
+        
+        .main-content {
+            margin-left: 250px;
             padding: 20px;
+            transition: all 0.3s;
         }
-        .receipt-qr {
-            width: 150px;
-            height: 150px;
+        
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            border: none;
+        }
+        
+        .card-header {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+        
+        .btn-danger {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+        
+        .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .logo {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .logo h4 {
+            font-weight: 700;
+            margin-bottom: 0;
+        }
+        
+        .user-profile {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .user-profile img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 10px;
+            border: 3px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .alert {
+            border-radius: 8px;
+        }
+        
+        .receipt-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                margin-left: -250px;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .sidebar.active {
+                margin-left: 0;
+            }
+            
+            .main-content.active {
+                margin-left: 250px;
+            }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-2 sidebar p-3">
-                <h4 class="text-center mb-4">Fee System</h4>
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="logo">
+                <h4><i class="bi bi-cash-stack"></i> Fees Manager</h4>
+            </div>
+            
+            <div class="user-profile">
+                <img src="https://ui-avatars.com/api/?name={{ session.username }}&background=random" alt="User">
+                <h5 class="text-white mt-2">{{ session.username }}</h5>
+            </div>
+            
+            <div class="px-3 py-4">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                        <a class="nav-link {% if request.path == url_for('dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'view_students' %}active{% endif %}" href="{{ url_for('view_students') }}">
-                            <i class="bi bi-people"></i> Students
+                        <a class="nav-link {% if request.path == url_for('view_students') %}active{% endif %}" href="{{ url_for('view_students') }}">
+                            <i class="bi bi-people-fill"></i> Students
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'view_terms' %}active{% endif %}" href="{{ url_for('view_terms') }}">
+                        <a class="nav-link {% if request.path == url_for('view_terms') %}active{% endif %}" href="{{ url_for('view_terms') }}">
                             <i class="bi bi-journal-bookmark"></i> Terms
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'view_payments' %}active{% endif %}" href="{{ url_for('view_payments') }}">
-                            <i class="bi bi-cash-coin"></i> Payments
+                        <a class="nav-link {% if request.path == url_for('view_payments') %}active{% endif %}" href="{{ url_for('view_payments') }}">
+                            <i class="bi bi-credit-card"></i> Payments
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'outstanding_report' %}active{% endif %}" href="{{ url_for('outstanding_report') }}">
-                            <i class="bi bi-clipboard-data"></i> Reports
+                        <a class="nav-link {% if request.path == url_for('outstanding_report') %}active{% endif %}" href="{{ url_for('outstanding_report') }}">
+                            <i class="bi bi-graph-up"></i> Reports
                         </a>
                     </li>
                     <li class="nav-item mt-4">
@@ -60,27 +192,39 @@
                     </li>
                 </ul>
             </div>
-
-            <!-- Main Content -->
-            <div class="col-md-10 content">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }} alert-dismissible fade show">
-                                {{ message }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-
-                <h2>{% block header %}{% endblock %}</h2>
-                {% block content %}{% endblock %}
-            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content" id="main-content">
+            <button class="btn btn-primary d-md-none mb-3" type="button" id="sidebarToggle">
+                <i class="bi bi-list"></i>
+            </button>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <!-- Page Content -->
+            {% block content %}{% endblock %}
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle sidebar on mobile
+        document.getElementById('sidebarToggle').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.getElementById('main-content').classList.toggle('active');
+        });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
