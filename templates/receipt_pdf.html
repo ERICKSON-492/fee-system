@@ -4,134 +4,194 @@
 
 {% block extra_css %}
 <style>
-    /* Compact styling */
+    /* A5 size styling */
+    body {
+        background-color: #f8f9fa;
+    }
     .receipt-container {
-        max-width: 600px;
-        padding: 15px;
+        width: 148mm;
+        min-height: 210mm;
+        padding: 10mm;
+        margin: 0 auto;
+        background: white;
+        box-shadow: 0 0 5px rgba(0,0,0,0.1);
+        font-family: Arial, sans-serif;
     }
     .receipt-header {
-        margin-bottom: 15px;
+        text-align: center;
+        margin-bottom: 8mm;
+    }
+    .receipt-logo {
+        height: 20mm;
+        margin-bottom: 3mm;
+    }
+    .receipt-title {
+        font-size: 14pt;
+        font-weight: bold;
+        margin-bottom: 1mm;
+    }
+    .receipt-subtitle {
+        font-size: 10pt;
+        color: #666;
     }
     .receipt-details {
-        font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        font-size: 9pt;
+        margin-bottom: 8mm;
     }
     .receipt-table {
-        font-size: 0.85rem;
+        width: 100%;
+        border-collapse: collapse;
+        margin: 5mm 0;
+        font-size: 9pt;
     }
     .receipt-table th, 
     .receipt-table td {
-        padding: 5px 8px;
+        padding: 3mm 2mm;
+        border: 0.5pt solid #ddd;
     }
-    .receipt-footer {
-        margin-top: 15px;
-        font-size: 0.8rem;
+    .receipt-table th {
+        background-color: #f5f5f5;
+        text-align: left;
+    }
+    .text-right {
+        text-align: right;
+    }
+    .balance-row {
+        font-weight: bold;
+        background-color: #fff2f2;
     }
     .qr-code-container {
-        width: 100px;
+        width: 35mm;
         margin: 0 auto;
     }
-    
+    .signature-area {
+        margin-top: 8mm;
+        text-align: right;
+    }
+    .signature-line {
+        border-top: 0.5pt solid #000;
+        width: 50mm;
+        display: inline-block;
+        margin-top: 10mm;
+    }
+    .receipt-footer {
+        font-size: 8pt;
+        color: #666;
+        text-align: center;
+        margin-top: 5mm;
+    }
+
     @media print {
-        body * {
-            visibility: hidden;
-        }
-        .receipt-container, .receipt-container * {
-            visibility: visible;
+        body {
+            background: white;
         }
         .receipt-container {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 10px;
+            width: 148mm;
+            height: 210mm;
             margin: 0;
+            padding: 10mm;
             box-shadow: none;
-            font-size: 12px;
         }
         .no-print {
             display: none !important;
+        }
+        .receipt-table {
+            page-break-inside: avoid;
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="receipt-container mx-auto">
-    <!-- Compact Header -->
-    <div class="text-center receipt-header">
+<div class="receipt-container">
+    <!-- Header -->
+    <div class="receipt-header">
         {% if logo_base64 %}
-        <img src="data:image/png;base64,{{ logo_base64 }}" alt="School Logo" style="height: 50px; margin-bottom: 5px;">
+        <img src="data:image/png;base64,{{ logo_base64 }}" class="receipt-logo" alt="School Logo">
         {% endif %}
-        <h4 style="margin-bottom: 5px;">SCHOOL FEES PAYMENT RECEIPT</h4>
-        <small class="text-muted">Official Receipt</small>
+        <div class="receipt-title">SCHOOL FEES PAYMENT RECEIPT</div>
+        <div class="receipt-subtitle">Example High School</div>
     </div>
     
-    <!-- Compact Details -->
-    <div class="row receipt-details">
-        <div class="col-6">
+    <!-- Details -->
+    <div class="receipt-details">
+        <div>
             <strong>Receipt No:</strong> {{ payment.receipt_number }}<br>
             <strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}<br>
             <strong>Time:</strong> {{ current_time.split(' ')[1] }}
         </div>
-        <div class="col-6 text-end">
+        <div class="text-right">
             <strong>Student:</strong> {{ payment.student_name }}<br>
             <strong>Adm No:</strong> {{ payment.admission_no }}<br>
             <strong>Form:</strong> {{ payment.form }}
         </div>
     </div>
     
-    <!-- Compact Table -->
-    <table class="table table-bordered receipt-table mt-3">
+    <!-- Payment Details -->
+    <table class="receipt-table">
         <thead>
             <tr>
                 <th>Description</th>
-                <th class="text-end">Amount (KSh)</th>
+                <th class="text-right">Amount (KSh)</th>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <td>Payment for {{ payment.term_name }}</td>
-                <td class="text-end">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
             </tr>
             <tr>
-                <td class="text-end"><strong>Total Paid:</strong></td>
-                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(payment.amount_paid) }}</strong></td>
+                <td class="text-right"><strong>Total Paid:</strong></td>
+                <td class="text-right"><strong>{{ "KSh{:,.2f}".format(payment.amount_paid) }}</strong></td>
             </tr>
-            <tr>
-                <td class="text-end"><strong>Balance:</strong></td>
-                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(outstanding_balance) }}</strong></td>
+            <tr class="balance-row">
+                <td class="text-right"><strong>Balance:</strong></td>
+                <td class="text-right"><strong>{{ "KSh{:,.2f}".format(outstanding_balance) }}</strong></td>
             </tr>
         </tbody>
     </table>
     
-    <!-- Compact Footer -->
-    <div class="row mt-3">
+    <!-- Verification -->
+    <div class="row">
         <div class="col-6 text-center">
             <div class="qr-code-container">
                 <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 100%;">
-                <small>Scan to verify</small>
+                <div style="font-size: 8pt; margin-top: 1mm;">Scan to verify</div>
             </div>
         </div>
-        <div class="col-6 text-end">
-            <div class="border-top pt-2">
-                <strong>Authorized Signatory</strong><br>
-                <small>School Bursar</small>
+        <div class="col-6">
+            <div class="signature-area">
+                <div class="signature-line"></div>
+                <div style="font-size: 9pt;">Authorized Signatory</div>
             </div>
         </div>
     </div>
     
-    <div class="text-center receipt-footer text-muted mt-2">
-        <small>Official receipt from Example High School</small>
+    <!-- Footer -->
+    <div class="receipt-footer">
+        This is an official computer-generated receipt from Example High School<br>
+        {{ current_time.split(' ')[0] }} | Thank you for your payment
     </div>
 </div>
 
-<!-- Print Button -->
-<div class="text-center mt-3 no-print">
-    <button onclick="window.print()" class="btn btn-sm btn-primary">
+<!-- Print Controls -->
+<div class="text-center no-print mt-3">
+    <button onclick="window.print()" class="btn btn-primary">
         <i class="bi bi-printer"></i> Print Receipt
     </button>
-    <a href="{{ url_for('view_payments') }}" class="btn btn-sm btn-outline-secondary ms-2">
-        <i class="bi bi-arrow-left"></i> Back
+    <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary ms-2">
+        <i class="bi bi-arrow-left"></i> Back to Payments
     </a>
 </div>
+
+<script>
+    // Auto-print when page loads (optional)
+    window.onload = function() {
+        setTimeout(function() {
+            window.print();
+        }, 500);
+    };
+</script>
 {% endblock %}
