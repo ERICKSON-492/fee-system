@@ -11,32 +11,40 @@ from contextlib import contextmanager
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from dotenv import load_dotenv  # Added for .env support
+import sys
 
-# Load environment variables
+
+
+# Load environment variables first
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
-# Database configuration - more robust handling
-# app.py - Updated database configuration
+# Strict production database configuration
+def init_db_pool():
+    try:
+        DATABASE_URL = os.environ['DATABASE_URL']  # Will raise KeyError if missing
+        
+        # Convert postgres:// to postgresql:// if needed
+        if DATABASE_URL.startswith('postgres://'):
+            DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        
+        pool = pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL,
+            sslmode='require'
+        )
+        print("✅ Database connection established")
+        return pool
+    except KeyError:
+        print("❌ DATABASE_URL environment variable is required")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Failed to connect to database: {str(e)}")
+        sys.exit(1)
 
-
-
-# Strict database configuration
-DATABASE_URL = os.environ['DATABASE_URL']  # Will raise KeyError if missing
-
-try:
-    db_pool = pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=10,
-        dsn=DATABASE_URL,
-        sslmode='require'
-    )
-    print("✅ Database connection pool created successfully")
-except Exception as e:
-    print(f"❌ Failed to create database connection pool: {str(e)}")
-    raise
+db_pool = init_db_pool()
 @contextmanager
 def get_db_connection():
     conn = db_pool.getconn()
