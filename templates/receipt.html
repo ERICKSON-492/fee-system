@@ -2,21 +2,56 @@
 
 {% block title %}Receipt #{{ payment.receipt_number }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        .receipt-container, .receipt-container * {
+            visibility: visible;
+        }
+        .receipt-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 20px;
+            margin: 0;
+            box-shadow: none;
+            background-color: white;
+        }
+        .no-print {
+            display: none !important;
+        }
+        .table {
+            page-break-inside: avoid;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
     <h2><i class="bi bi-receipt"></i> Payment Receipt</h2>
     <div>
+        <button onclick="window.print()" class="btn btn-primary me-2">
+            <i class="bi bi-printer"></i> Print Receipt
+        </button>
+        <a href="{{ url_for('generate_receipt_pdf', payment_id=payment.id) }}" class="btn btn-success me-2">
+            <i class="bi bi-download"></i> Download PDF
+        </a>
         <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Back to Payments
-        </a>
-        <a href="{{ url_for('generate_receipt_pdf', payment_id=payment.id) }}" class="btn btn-primary">
-            <i class="bi bi-download"></i> Download PDF
         </a>
     </div>
 </div>
 
 <div class="receipt-container">
     <div class="text-center mb-4">
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="School Logo" style="max-height: 80px; margin-bottom: 15px;">
+        {% endif %}
         <h3>SCHOOL FEES PAYMENT RECEIPT</h3>
         <p class="text-muted">Official Receipt</p>
     </div>
@@ -95,4 +130,11 @@
         <small>This is an official receipt from Example High School. Thank you for your payment.</small>
     </div>
 </div>
+
+<div class="text-center mt-4 no-print">
+    <button onclick="window.print()" class="btn btn-primary">
+        <i class="bi bi-printer"></i> Print Receipt
+    </button>
+</div>
+
 {% endblock %}
