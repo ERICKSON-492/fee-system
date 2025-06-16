@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Outstanding Balance Receipt{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background-color: white !important;
+    }
+    .compact-receipt {
+        width: 80mm;
+        min-height: 100mm;
+        padding: 5mm;
+        margin: 0 auto;
+        font-family: Arial, sans-serif;
+    }
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 5mm;
+    }
+    .receipt-logo {
+        height: 15mm;
+        margin-bottom: 2mm;
+    }
+    .receipt-title {
+        font-size: 14pt;
+        font-weight: bold;
+        margin-bottom: 1mm;
+    }
+    .receipt-subtitle {
+        font-size: 10pt;
+        color: #666;
+        margin-bottom: 3mm;
+    }
+    .receipt-body {
+        font-size: 10pt;
+    }
+    .receipt-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 3mm 0;
+        font-size: 9pt;
+    }
+    .receipt-table th, 
+    .receipt-table td {
+        padding: 2mm;
+        border: 0.5px solid #ddd;
+    }
+    .receipt-table th {
+        background-color: #f5f5f5;
+    }
+    .text-right {
+        text-align: right;
+    }
+    .qr-code {
+        width: 25mm;
+        height: 25mm;
+        margin: 2mm auto;
+    }
+    .signature-line {
+        border-top: 1px solid #000;
+        width: 50mm;
+        margin: 5mm auto 1mm;
+    }
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+        body, .compact-receipt {
+            width: 80mm !important;
+            margin: 0 !important;
+            padding: 5mm !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="compact-receipt">
+    <!-- Header -->
+    <div class="receipt-header">
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" class="receipt-logo">
+        {% endif %}
+        <div class="receipt-title">OUTSTANDING BALANCE NOTICE</div>
+        <div class="receipt-subtitle">Example High School</div>
+    </div>
+    
+    <!-- Student Info -->
+    <div class="receipt-body">
+        <div><strong>Student:</strong> {{ student.name }}</div>
+        <div><strong>Adm No:</strong> {{ student.admission_no }}</div>
+        <div><strong>Form:</strong> {{ student.form }}</div>
+        <div><strong>Date:</strong> {{ current_date }}</div>
+    </div>
+    
+    <!-- Balance Summary -->
+    <table class="receipt-table">
+        <tr>
+            <th>Description</th>
+            <th class="text-right">Amount (KSh)</th>
+        </tr>
+        <tr>
+            <td>Total Fees Due</td>
+            <td class="text-right">{{ "KSh{:,.2f}".format(student.total_due) }}</td>
+        </tr>
+        <tr>
+            <td>Total Paid</td>
+            <td class="text-right">{{ "KSh{:,.2f}".format(student.total_paid) }}</td>
+        </tr>
+        <tr style="font-weight: bold; background-color: #fff2f2;">
+            <td>OUTSTANDING BALANCE</td>
+            <td class="text-right">{{ "KSh{:,.2f}".format(student.balance) }}</td>
+        </tr>
+    </table>
+    
+    <!-- QR Code -->
+    <div class="text-center">
+        <img src="data:image/png;base64,{{ qr_code }}" class="qr-code">
+        <div style="font-size: 8pt;">Scan to verify balance</div>
+    </div>
+    
+    <!-- Signature -->
+    <div class="text-center" style="margin-top: 5mm;">
+        <div class="signature-line"></div>
+        <div style="font-size: 9pt;">Authorized Signatory</div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="text-center" style="font-size: 8pt; margin-top: 3mm; color: #666;">
+        Please settle your balance by {{ (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y') }}
+    </div>
+</div>
+
+<!-- Print Button -->
+<div class="text-center no-print mt-3">
+    <button onclick="window.print()" class="btn btn-sm btn-primary">
+        <i class="bi bi-printer"></i> Print Receipt
+    </button>
+    <a href="{{ url_for('outstanding_report') }}" class="btn btn-sm btn-outline-secondary ms-2">
+        <i class="bi bi-arrow-left"></i> Back to Report
+    </a>
+</div>
+
+<script>
+    // Auto-print when page loads (optional)
+    window.onload = function() {
+        setTimeout(function() {
+            window.print();
+        }, 500);
+    };
+</script>
+{% endblock %}
