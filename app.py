@@ -21,12 +21,19 @@ app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 # Database configuration - more robust handling
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
-    if os.environ.get('FLASK_ENV') == 'development':
-        DATABASE_URL = "postgresql://user:password@localhost/dbname"
-        print("Warning: Using development database configuration")
-    else:
-        raise RuntimeError("DATABASE_URL environment variable not set in production!")
+    raise RuntimeError("DATABASE_URL environment variable not set!")
 
+# Connection pool setup
+try:
+    db_pool = pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dsn=DATABASE_URL,
+        sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
+    )
+except psycopg2.OperationalError as e:
+    print(f"Failed to connect to database: {e}")
+    db_pool = None
 # Connection pool with better error handling
 try:
     db_pool = pool.ThreadedConnectionPool(
