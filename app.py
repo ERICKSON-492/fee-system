@@ -14,10 +14,18 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
 # Database configuration
+
 DATABASE_URL = os.environ.get('DATABASE_URL')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable not set!")
+    print("Warning: DATABASE_URL not set. Using development defaults.")
+    DATABASE_URL = "postgresql://user:password@localhost/dbname"
+
+if not SECRET_KEY:
+    print("Warning: SECRET_KEY not set. Using insecure default key.")
+    SECRET_KEY = "insecure-default-key-for-dev-only"
+
 
 # Connection pool setup
 db_pool = pool.ThreadedConnectionPool(
