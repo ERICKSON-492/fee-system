@@ -1,11 +1,5 @@
 import os
 from psycopg2 import pool
-
-db_pool = pool.ThreadedConnectionPool(
-    minconn=1,
-    maxconn=10,
-    conninfo=DATABASE_URL
-)
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session
 from weasyprint import HTML
@@ -17,27 +11,20 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
 app = Flask(__name__)
-db_pool = pool.ThreadedConnectionPool(
-    minconn=1,
-    maxconn=10,
-    user='admin',
-    password='admin',
-    host='0.0.0.0',
-    port='5000',
-    DATABASE_URL = os.environ.get("DATABASE_URL")
-
-)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable not set!")
+
 # Connection pool setup
-db_pool = ThreadedConnectionPool(
+db_pool = pool.ThreadedConnectionPool(
     minconn=1,
     maxconn=10,
     dsn=DATABASE_URL,
-    sslmode='require'
+    sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
 )
 
 @contextmanager
@@ -60,6 +47,8 @@ def get_db_cursor():
             raise
         finally:
             cur.close()
+
+# Rest of your code remains the same...                            
 
 def init_db():
     with get_db_cursor() as cur:
@@ -131,7 +120,7 @@ def login():
         password = request.form['password']
         
         with get_db_cursor() as cur:
-            cur.execute('SELECT * FROM users WHERE username = $s', (username,))
+            cur.execute('SELECT * FROM users WHERE username = %s', (username,))
             user = cur.fetchone()
             
             if user and check_password_hash(user[2], password):
@@ -163,8 +152,8 @@ def view_students():
     params = []
     
     if search:
-        query += ' WHERE admission_no ILIKE $s OR name ILIKE $s'
-        params.extend([f'${search}$', f'${search}$'])
+        query += ' WHERE admission_no ILIKE %s OR name ILIKE %s'
+        params.extend([f'%{search}%', f'%{search}%'])
     
     query += ' ORDER BY name'
     
@@ -185,7 +174,7 @@ def add_student():
         try:
             with get_db_cursor() as cur:
                 cur.execute(
-                    'INSERT INTO students (admission_no, name, form) VALUES ($s, $s, $s)',
+                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s)',
                     (admission_no, name, form)
                 )
                 flash('Student added successfully!', 'success')
@@ -207,7 +196,7 @@ def edit_student(id):
         try:
             with get_db_cursor() as cur:
                 cur.execute(
-                    'UPDATE students SET name = $s, form = $s WHERE id = $s',
+                    'UPDATE students SET name = %s, form = %s WHERE id = %s',
                     (name, form, id)
                 )
                 flash('Student updated successfully!', 'success')
@@ -216,7 +205,7 @@ def edit_student(id):
             flash(f'Error updating student: {str(e)}', 'danger')
     
     with get_db_cursor() as cur:
-        cur.execute('SELECT * FROM students WHERE id = $s', (id,))
+        cur.execute('SELECT * FROM students WHERE id = %s', (id,))
         student = cur.fetchone()
     
     if not student:
@@ -230,7 +219,7 @@ def edit_student(id):
 def delete_student(id):
     try:
         with get_db_cursor() as cur:
-            cur.execute('DELETE FROM students WHERE id = $s', (id,))
+            cur.execute('DELETE FROM students WHERE id = %s', (id,))
             flash('Student deleted successfully!', 'success')
     except Exception as e:
         flash(f'Error deleting student: {str(e)}', 'danger')
@@ -257,7 +246,7 @@ def add_term():
             amount = float(amount)
             with get_db_cursor() as cur:
                 cur.execute(
-                    'INSERT INTO terms (name, amount) VALUES ($s, $s)',
+                    'INSERT INTO terms (name, amount) VALUES (%s, %s)',
                     (name, amount)
                 )
                 flash('Term added successfully!', 'success')
@@ -282,7 +271,7 @@ def edit_term(id):
             amount = float(amount)
             with get_db_cursor() as cur:
                 cur.execute(
-                    'UPDATE terms SET name = $s, amount = $s WHERE id = $s',
+                    'UPDATE terms SET name = %s, amount = %s WHERE id = %s',
                     (name, amount, id)
                 )
                 flash('Term updated successfully!', 'success')
@@ -295,7 +284,7 @@ def edit_term(id):
             flash(f'Error updating term: {str(e)}', 'danger')
     
     with get_db_cursor() as cur:
-        cur.execute('SELECT * FROM terms WHERE id = $s', (id,))
+        cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
         term = cur.fetchone()
     
     if not term:
@@ -309,7 +298,7 @@ def edit_term(id):
 def delete_term(id):
     try:
         with get_db_cursor() as cur:
-            cur.execute('DELETE FROM terms WHERE id = $s', (id,))
+            cur.execute('DELETE FROM terms WHERE id = %s', (id,))
             flash('Term deleted successfully!', 'success')
     except Exception as e:
         flash(f'Error deleting term: {str(e)}', 'danger')
@@ -356,13 +345,13 @@ def add_payment():
     
     try:
         amount_paid = float(amount_paid)
-        receipt_number = f"RCPT-{datetime.now().strftime('$Y$m$d')}-{os.urandom(2).hex().upper()}"
+        receipt_number = f"RCPT-{datetime.now().strftime('%s%m%d')}-{os.urandom(2).hex().upper()}"
         
         with get_db_cursor() as cur:
             # Find student by ID or admission number
             cur.execute('''
                 SELECT id FROM students 
-                WHERE id = $s OR admission_no = $s
+                WHERE id = %s OR admission_no = %s
             ''', (student_input, student_input))
             student = cur.fetchone()
             
@@ -373,7 +362,7 @@ def add_payment():
             student_id = student[0]
             
             # Verify term exists
-            cur.execute('SELECT id FROM terms WHERE id = $s', (term_id,))
+            cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
             if not cur.fetchone():
                 flash('Term not found', 'danger')
                 return redirect(url_for('view_payments'))
@@ -382,7 +371,7 @@ def add_payment():
             cur.execute('''
                 INSERT INTO payments 
                 (student_id, term_id, amount_paid, payment_date, receipt_number)
-                VALUES ($s, $s, $s, $s, $s)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
             ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
             
@@ -411,9 +400,9 @@ def edit_payment(id):
             with get_db_cursor() as cur:
                 cur.execute('''
                     UPDATE payments 
-                    SET student_id = $s, term_id = $s, 
-                        amount_paid = $s, payment_date = $s
-                    WHERE id = $s
+                    SET student_id = %s, term_id = %s, 
+                        amount_paid = %s, payment_date = %s
+                    WHERE id = %s
                 ''', (student_id, term_id, amount_paid, payment_date, id))
                 
                 flash('Payment updated successfully!', 'success')
@@ -431,7 +420,7 @@ def edit_payment(id):
             FROM payments p
             JOIN students s ON p.student_id = s.id
             JOIN terms t ON p.term_id = t.id
-            WHERE p.id = $s
+            WHERE p.id = %s
         ''', (id,))
         payment = cur.fetchone()
         
@@ -455,7 +444,7 @@ def edit_payment(id):
 def delete_payment(id):
     try:
         with get_db_cursor() as cur:
-            cur.execute('DELETE FROM payments WHERE id = $s', (id,))
+            cur.execute('DELETE FROM payments WHERE id = %s', (id,))
             flash('Payment deleted successfully!', 'success')
     except Exception as e:
         flash(f'Error deleting payment: {str(e)}', 'danger')
@@ -473,7 +462,7 @@ def view_receipt(payment_id):
             FROM payments p
             JOIN students s ON p.student_id = s.id
             JOIN terms t ON p.term_id = t.id
-            WHERE p.id = $s
+            WHERE p.id = %s
         ''', (payment_id,))
         payment = cur.fetchone()
         
@@ -484,7 +473,7 @@ def view_receipt(payment_id):
         # Calculate total paid and balance
         cur.execute('''
             SELECT COALESCE(SUM(amount_paid), 0) FROM payments
-            WHERE student_id = $s
+            WHERE student_id = %s
         ''', (payment['student_id'],))
         total_paid = cur.fetchone()[0]
         
@@ -520,7 +509,7 @@ def generate_receipt_pdf(payment_id):
             FROM payments p
             JOIN students s ON p.student_id = s.id
             JOIN terms t ON p.term_id = t.id
-            WHERE p.id = $s
+            WHERE p.id = %s
         ''', (payment_id,))
         payment = cur.fetchone()
         
@@ -530,7 +519,7 @@ def generate_receipt_pdf(payment_id):
         # Calculate total paid and balance
         cur.execute('''
             SELECT COALESCE(SUM(amount_paid), 0) FROM payments
-            WHERE student_id = $s
+            WHERE student_id = %s
         ''', (payment['student_id'],))
         total_paid = cur.fetchone()[0]
         
@@ -553,8 +542,9 @@ def generate_receipt_pdf(payment_id):
                              payment=payment,
                              total_paid=total_paid,
                              outstanding_balance=outstanding_balance,
-                             current_time=datetime.now().strftime('$Y-$m-$d $H:$M:$S'),
+                             current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                              qr_code=qr_b64)
+        
         
         pdf = HTML(string=html).write_pdf()
         
@@ -603,7 +593,7 @@ def outstanding_report_pdf():
     
     html = render_template('outstanding_report_pdf.html',
                          report_data=report_data,
-                         current_time=datetime.now().strftime('$Y-$m-$d $H:$M:$S'))
+                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     
     pdf = HTML(string=html).write_pdf()
     
