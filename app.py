@@ -1,4 +1,5 @@
 import os
+import psycopg2  # Added missing import
 from psycopg2 import pool
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session
@@ -9,23 +10,35 @@ from io import BytesIO
 from contextlib import contextmanager
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+from dotenv import load_dotenv  # Added for .env support
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
-# Database configuration
-
+# Database configuration - more robust handling
 DATABASE_URL = os.environ.get('DATABASE_URL')
-SECRET_KEY = os.environ.get('SECRET_KEY')
-
 if not DATABASE_URL:
-    print("Warning: DATABASE_URL not set. Using development defaults.")
-    DATABASE_URL = "postgresql://user:password@localhost/dbname"
+    if os.environ.get('FLASK_ENV') == 'development':
+        DATABASE_URL = "postgresql://user:password@localhost/dbname"
+        print("Warning: Using development database configuration")
+    else:
+        raise RuntimeError("DATABASE_URL environment variable not set in production!")
 
-if not SECRET_KEY:
-    print("Warning: SECRET_KEY not set. Using insecure default key.")
-    SECRET_KEY = "insecure-default-key-for-dev-only"
-
+# Connection pool with better error handling
+try:
+    db_pool = pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dsn=DATABASE_URL,
+        sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
+    )
+    print("Successfully connected to database")
+except psycopg2.OperationalError as e:
+    print(f"Failed to connect to database: {e}")
+    db_pool = None
 
 # Connection pool setup
 db_pool = pool.ThreadedConnectionPool(
@@ -45,17 +58,23 @@ def get_db_connection():
 
 @contextmanager
 def get_db_cursor():
-    with get_db_connection() as conn:
+    if not db_pool:
+        raise RuntimeError("Database connection pool not initialized")
+        
+    conn = db_pool.getconn()
+    try:
         cur = conn.cursor()
         try:
             yield cur
             conn.commit()
-        except:
+        except Exception as e:
             conn.rollback()
+            print(f"Database error: {e}")
             raise
         finally:
             cur.close()
-
+    finally:
+        db_pool.putconn(conn)
 # Rest of your code remains the same...                            
 
 def init_db():
@@ -109,7 +128,7 @@ def init_db():
             hashed_password = generate_password_hash('admin')
             cur.execute('''
                 INSERT INTO users (username, password)
-                VALUES ($s, $s)
+                VALUES (%s, %s)
             ''', ('admin', hashed_password))
 
 def login_required(f):
