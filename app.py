@@ -793,14 +793,14 @@ def outstanding_balance_receipt(student_id):
             # Get student details and balance
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no, s.form,
-                       SUM(t.amount) AS total_due,
-                       COALESCE(SUM(p.amount_paid), 0) AS total_paid,
-                       SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) AS balance
+                       SUM(t.amount)::float AS total_due,
+                       COALESCE(SUM(p.amount_paid), 0)::float AS total_paid,
+                       (SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0))::float AS balance
                 FROM students s
                 CROSS JOIN terms t
                 LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
                 WHERE s.id = %s
-                GROUP BY s.id
+                GROUP BY s.id, s.name, s.admission_no, s.form
             ''', (student_id,))
             student = cur.fetchone()
             
@@ -808,28 +808,36 @@ def outstanding_balance_receipt(student_id):
                 flash('Student not found', 'danger')
                 return redirect(url_for('outstanding_report'))
 
+            # Ensure we have all required fields
+            if None in [student.get('name'), student.get('admission_no'), student.get('form')]:
+                raise ValueError("Missing required student data")
+
             # Generate QR code
-            qr_data = f"""
-            Student: {student['name']}
-            Adm No: {student['admission_no']}
-            Balance: KSh{student['balance']:,.2f}
-            Date: {datetime.now().strftime('%d/%m/%Y')}
-            """
+            qr_data = f"""Student: {student['name']}
+Adm No: {student['admission_no']}
+Balance: KSh{student['balance']:,.2f}
+Date: {datetime.now().strftime('%d/%m/%Y')}"""
+            
             qr_img = qrcode.make(qr_data)
             qr_buffer = BytesIO()
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
             
+            # Get current date
+            current_date = datetime.now().strftime('%d/%m/%Y')
+            
+            # Render template
             return render_template('outstanding_receipt.html',
                                 student=student,
-                                current_date=datetime.now().strftime('%d/%m/%Y'),
+                                current_date=current_date,
                                 qr_code=qr_b64,
                                 logo_base64=get_logo_base64())
             
     except Exception as e:
-        flash('Error generating receipt', 'danger')
-        print(f"Error in outstanding_balance_receipt: {str(e)}")
+        print(f"Error generating outstanding balance receipt: {str(e)}")
+        flash('Error generating receipt. Please try again.', 'danger')
         return redirect(url_for('outstanding_report'))
+      
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
