@@ -56,7 +56,14 @@ def init_db_pool():
             else:
                 print("❌ Failed to connect to database after multiple attempts")
                 sys.exit(1)
-
+def get_logo_base64():
+    try:
+        logo_path = os.path.join(app.static_folder, 'images', 'LOGO.jpg')
+        with open(logo_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Error loading logo: {str(e)}")
+        return None
 @atexit.register
 def shutdown_db_pool():
     global db_pool
