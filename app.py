@@ -13,15 +13,16 @@ from functools import wraps
 from dotenv import load_dotenv  # Added for .env support
 import sys
 
-
-
 # Load environment variables first
 load_dotenv()
 
 app = Flask(__name__)
 
-# Strict production database configuration
+# Global database connection pool
+db_pool = None
+
 def init_db_pool():
+    global db_pool  # Declare we're using the global variable
     try:
         DATABASE_URL = os.environ['DATABASE_URL']  # Will raise KeyError if missing
         
@@ -29,14 +30,13 @@ def init_db_pool():
         if DATABASE_URL.startswith('postgres://'):
             DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
         
-        pool = pool.ThreadedConnectionPool(
+        db_pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
             dsn=DATABASE_URL,
             sslmode='require'
         )
         print("✅ Database connection established")
-        return pool
     except KeyError:
         print("❌ DATABASE_URL environment variable is required")
         sys.exit(1)
@@ -44,15 +44,18 @@ def init_db_pool():
         print(f"❌ Failed to connect to database: {str(e)}")
         sys.exit(1)
 
-db_pool = init_db_pool()
+# Initialize the connection pool when the app starts
+init_db_pool()
+
 @contextmanager
 def get_db_connection():
+    if db_pool is None:
+        raise RuntimeError("Database connection pool not initialized")
     conn = db_pool.getconn()
     try:
         yield conn
     finally:
         db_pool.putconn(conn)
-
 @contextmanager
 def get_db_cursor():
     if not db_pool:
