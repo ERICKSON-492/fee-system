@@ -55,10 +55,17 @@
             font-weight: bold;
             background-color: #f2f2f2;
         }
+        .pdf-logo {
+            max-height: 60px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
+        {% if logo_base64 %}
+        <img src="data:image/jpg;base64,{{ logo_base64 }}" alt="School Logo" class="pdf-logo">
+        {% endif %}
         <h2>OUTSTANDING BALANCES REPORT</h2>
         <p>Generated on {{ current_time }}</p>
     </div>
