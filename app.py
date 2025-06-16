@@ -19,42 +19,24 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key')
 
 # Database configuration - more robust handling
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable not set!")
+# app.py - Updated database configuration
 
-# Connection pool setup
+
+
+# Strict database configuration
+DATABASE_URL = os.environ['DATABASE_URL']  # Will raise KeyError if missing
+
 try:
     db_pool = pool.ThreadedConnectionPool(
         minconn=1,
         maxconn=10,
         dsn=DATABASE_URL,
-        sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
+        sslmode='require'
     )
-except psycopg2.OperationalError as e:
-    print(f"Failed to connect to database: {e}")
-    db_pool = None
-# Connection pool with better error handling
-try:
-    db_pool = pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=10,
-        dsn=DATABASE_URL,
-        sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
-    )
-    print("Successfully connected to database")
-except psycopg2.OperationalError as e:
-    print(f"Failed to connect to database: {e}")
-    db_pool = None
-
-# Connection pool setup
-db_pool = pool.ThreadedConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dsn=DATABASE_URL,
-    sslmode='require' if 'amazonaws.com' in DATABASE_URL else None
-)
-
+    print("✅ Database connection pool created successfully")
+except Exception as e:
+    print(f"❌ Failed to create database connection pool: {str(e)}")
+    raise
 @contextmanager
 def get_db_connection():
     conn = db_pool.getconn()
@@ -637,6 +619,9 @@ def outstanding_report_pdf():
     return response
 
 if __name__ == '__main__':
-    init_db()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    try:
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        print(f"Failed to start application: {str(e)}")
+        raise
