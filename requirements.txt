@@ -1,10 +1,6 @@
 Flask==3.0.2
 gunicorn==21.2.0
-psycopg2-binary==2.9.9  # Use binary version for easier installation
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
 weasyprint==57.2
 qrcode[pil]==7.4.2
-python-dotenv==1.0.1  # For loading .env files
-Werkzeug==3.0.1  # Explicitly pin Werkzeug version
-
-
-
