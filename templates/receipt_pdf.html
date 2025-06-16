@@ -1,151 +1,137 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <div class="header">
-    {% if logo_base64 %}
-    <img src="data:image/jpg;base64,{{ logo_base64 }}" alt="School Logo" class="pdf-logo">
-    {% endif %}
-    <h2>SCHOOL FEES PAYMENT RECEIPT</h2>
-    <p>Official Receipt</p>
-</div>
-    <meta charset="UTF-8">
-    <title>Receipt #{{ payment.receipt_number }}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
+{% extends "base.html" %}
+
+{% block title %}Receipt #{{ payment.receipt_number }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Compact styling */
+    .receipt-container {
+        max-width: 600px;
+        padding: 15px;
+    }
+    .receipt-header {
+        margin-bottom: 15px;
+    }
+    .receipt-details {
+        font-size: 0.9rem;
+    }
+    .receipt-table {
+        font-size: 0.85rem;
+    }
+    .receipt-table th, 
+    .receipt-table td {
+        padding: 5px 8px;
+    }
+    .receipt-footer {
+        margin-top: 15px;
+        font-size: 0.8rem;
+    }
+    .qr-code-container {
+        width: 100px;
+        margin: 0 auto;
+    }
+    
+    @media print {
+        body * {
+            visibility: hidden;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
+        .receipt-container, .receipt-container * {
+            visibility: visible;
         }
-        .header h2 {
-            color: #2c3e50;
-            margin-bottom: 5px;
-        }
-        .header p {
-            color: #7f8c8d;
-        }
-        .info-section {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-        }
-        .student-info, .receipt-info {
-            width: 48%;
-        }
-        .table {
+        .receipt-container {
+            position: absolute;
+            left: 0;
+            top: 0;
             width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 30px;
-        }
-        .table th, .table td {
             padding: 10px;
-            border: 1px solid #ddd;
-            text-align: left;
-        }
-        .table th {
-            background-color: #f2f2f2;
-        }
-        .text-right {
-            text-align: right;
-        }
-        .signature-area {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 50px;
-        }
-        .qr-code {
-            text-align: center;
-            width: 150px;
-        }
-        .signature {
-            width: 200px;
-            text-align: center;
-        }
-        .footer {
-            margin-top: 50px;
-            text-align: center;
+            margin: 0;
+            box-shadow: none;
             font-size: 12px;
-            color: #7f8c8d;
         }
-        .total-row {
-            font-weight: bold;
+        .no-print {
+            display: none !important;
         }
-        .balance-row {
-            font-weight: bold;
-            color: #e74c3c;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>SCHOOL FEES PAYMENT RECEIPT</h2>
-        <p>Official Receipt</p>
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="receipt-container mx-auto">
+    <!-- Compact Header -->
+    <div class="text-center receipt-header">
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="School Logo" style="height: 50px; margin-bottom: 5px;">
+        {% endif %}
+        <h4 style="margin-bottom: 5px;">SCHOOL FEES PAYMENT RECEIPT</h4>
+        <small class="text-muted">Official Receipt</small>
     </div>
     
-    <div class="info-section">
-        <div class="school-info">
-            <h4>Example High School</h4>
-            <p>123 Education Road<br>
-            Nairobi, Kenya<br>
-            Phone: +254 700 123456<br>
-            Email: info@examplehigh.edu</p>
+    <!-- Compact Details -->
+    <div class="row receipt-details">
+        <div class="col-6">
+            <strong>Receipt No:</strong> {{ payment.receipt_number }}<br>
+            <strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}<br>
+            <strong>Time:</strong> {{ current_time.split(' ')[1] }}
         </div>
-        
-        <div class="receipt-info">
-            <p><strong>Receipt No:</strong> {{ payment.receipt_number }}</p>
-            <p><strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}</p>
-            <p><strong>Time:</strong> {{ current_time.split(' ')[1] }}</p>
+        <div class="col-6 text-end">
+            <strong>Student:</strong> {{ payment.student_name }}<br>
+            <strong>Adm No:</strong> {{ payment.admission_no }}<br>
+            <strong>Form:</strong> {{ payment.form }}
         </div>
     </div>
     
-    <div class="student-details">
-        <h4>Student Information</h4>
-        <p><strong>Name:</strong> {{ payment.student_name }}</p>
-        <p><strong>Admission No:</strong> {{ payment.admission_no }}</p>
-        <p><strong>Form:</strong> {{ payment.form }}</p>
-    </div>
-    
-    <table class="table">
+    <!-- Compact Table -->
+    <table class="table table-bordered receipt-table mt-3">
         <thead>
             <tr>
                 <th>Description</th>
-                <th class="text-right">Amount (KSh)</th>
+                <th class="text-end">Amount (KSh)</th>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <td>Payment for {{ payment.term_name }}</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+                <td class="text-end">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
             </tr>
-            <tr class="total-row">
-                <td class="text-right">Total Paid:</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+            <tr>
+                <td class="text-end"><strong>Total Paid:</strong></td>
+                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(payment.amount_paid) }}</strong></td>
             </tr>
-            <tr class="balance-row">
-                <td class="text-right">Outstanding Balance:</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(outstanding_balance) }}</td>
+            <tr>
+                <td class="text-end"><strong>Balance:</strong></td>
+                <td class="text-end"><strong>{{ "KSh{:,.2f}".format(outstanding_balance) }}</strong></td>
             </tr>
         </tbody>
     </table>
     
-    <div class="signature-area">
-        <div class="qr-code">
-            <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" width="120">
-            <p>Scan to verify receipt</p>
+    <!-- Compact Footer -->
+    <div class="row mt-3">
+        <div class="col-6 text-center">
+            <div class="qr-code-container">
+                <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 100%;">
+                <small>Scan to verify</small>
+            </div>
         </div>
-        
-        <div class="signature">
-            <p class="signature-line">_________________________</p>
-            <p><strong>Authorized Signatory</strong></p>
-            <p>School Bursar</p>
+        <div class="col-6 text-end">
+            <div class="border-top pt-2">
+                <strong>Authorized Signatory</strong><br>
+                <small>School Bursar</small>
+            </div>
         </div>
     </div>
     
-    <div class="footer">
-        <p>This is an official receipt from Example High School. Thank you for your payment.</p>
+    <div class="text-center receipt-footer text-muted mt-2">
+        <small>Official receipt from Example High School</small>
     </div>
-</body>
-</html>
+</div>
+
+<!-- Print Button -->
+<div class="text-center mt-3 no-print">
+    <button onclick="window.print()" class="btn btn-sm btn-primary">
+        <i class="bi bi-printer"></i> Print Receipt
+    </button>
+    <a href="{{ url_for('view_payments') }}" class="btn btn-sm btn-outline-secondary ms-2">
+        <i class="bi bi-arrow-left"></i> Back
+    </a>
+</div>
+{% endblock %}
