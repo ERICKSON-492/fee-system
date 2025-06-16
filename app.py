@@ -664,7 +664,7 @@ def outstanding_report():
 def generate_receipt_pdf(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get payment details with all required fields
+            # Get payment details
             cur.execute('''
                 SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
@@ -680,21 +680,25 @@ def generate_receipt_pdf(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
-            # Calculate total paid by this student
+            # Convert amounts to float
+            term_amount = float(payment['term_amount'])
+            amount_paid = float(payment['amount_paid'])
+            
+            # Calculate total paid
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) 
+                SELECT COALESCE(SUM(amount_paid), 0)::float
                 FROM payments
                 WHERE student_id = %s
             ''', (payment['student_id'],))
             total_paid = float(cur.fetchone()[0])
             
-            outstanding_balance = float(payment['term_amount']) - total_paid
+            outstanding_balance = term_amount - total_paid
             
             # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
-            Amount: {payment['amount_paid']:.2f}
+            Amount: {amount_paid:.2f}
             Date: {payment['payment_date']}
             """
             qr_img = qrcode.make(qr_data)
@@ -702,9 +706,10 @@ def generate_receipt_pdf(payment_id):
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
             
-            # Get logo as base64
+            # Get logo
             logo_base64 = get_logo_base64()
             
+            # Render HTML
             html = render_template('receipt_pdf.html',
                                 payment=payment,
                                 total_paid=total_paid,
@@ -713,9 +718,11 @@ def generate_receipt_pdf(payment_id):
                                 qr_code=qr_b64,
                                 logo_base64=logo_base64)
             
-            pdf = HTML(string=html).write_pdf()
+            # Generate PDF
+            pdf_bytes = HTML(string=html).write_pdf()
             
-            response = make_response(pdf)
+            # Create response
+            response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
             return response
@@ -724,6 +731,7 @@ def generate_receipt_pdf(payment_id):
         flash('Error generating PDF receipt', 'danger')
         print(f"Error in generate_receipt_pdf: {str(e)}")
         return redirect(url_for('view_payments'))
+
 @app.route('/reports/outstanding/pdf')
 @login_required
 def outstanding_report_pdf():
@@ -748,17 +756,19 @@ def outstanding_report_pdf():
                 flash('No outstanding balances found', 'info')
                 return redirect(url_for('outstanding_report'))
 
-            # Get logo as base64
+            # Get logo
             logo_base64 = get_logo_base64()
 
+            # Render HTML
             html = render_template('outstanding_report_pdf.html',
                                 report_data=report_data,
                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                 logo_base64=logo_base64)
             
-            # Generate PDF with proper WeasyPrint initialization
+            # Generate PDF
             pdf_bytes = HTML(string=html).write_pdf()
             
+            # Create response
             response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
@@ -767,7 +777,7 @@ def outstanding_report_pdf():
     except Exception as e:
         flash('Error generating PDF report', 'danger')
         print(f"Error in outstanding_report_pdf: {str(e)}")
-        return redirect(url_for('outstanding_report'))        
+        return redirect(url_for('outstanding_report'))    
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
