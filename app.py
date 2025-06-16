@@ -787,12 +787,13 @@ def outstanding_report_pdf():
         print(f"Error in outstanding_report_pdf: {str(e)}")
         return redirect(url_for('outstanding_report'))  
 
+
 @app.route('/receipt/outstanding/<int:student_id>')
 @login_required
 def outstanding_balance_receipt(student_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get student details and balance
+            # Get student balance information
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no, s.form,
                        SUM(t.amount)::float AS total_due,
@@ -810,8 +811,10 @@ def outstanding_balance_receipt(student_id):
                 flash('Student not found', 'danger')
                 return redirect(url_for('outstanding_report'))
 
+            # Prepare all date strings
             current_date = datetime.now().strftime('%d/%m/%Y')
             due_date = (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y')
+            reference_no = f"BAL-{student['admission_no']}-{current_date.replace('/', '')}"
 
             # Generate QR code
             qr_data = f"""Student: {student['name']}
@@ -828,13 +831,14 @@ Date: {current_date}"""
                                 student=student,
                                 current_date=current_date,
                                 due_date=due_date,
+                                reference_no=reference_no,
                                 qr_code=qr_b64,
                                 logo_base64=get_logo_base64())
             
     except Exception as e:
-        print(f"Error generating outstanding balance receipt: {str(e)}")
+        print(f"Error generating receipt: {str(e)}")
         flash('Error generating receipt. Please try again.', 'danger')
-        return redirect(url_for('outstanding_report'))      
+        return redirect(url_for('outstanding_report'))
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
