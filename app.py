@@ -1,3 +1,4 @@
+
 import os
 import time
 import psycopg2
@@ -19,12 +20,6 @@ import atexit
 load_dotenv()
 
 # Configuration
-required_env_vars = ['DATABASE_URL']
-missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-if missing_vars:
-    print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
-    sys.exit(1)
-
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 
@@ -42,6 +37,7 @@ def init_db_pool():
             if not DATABASE_URL:
                 raise ValueError("DATABASE_URL environment variable is required")
                 
+            # Ensure connection string uses postgresql://
             if DATABASE_URL.startswith('postgres://'):
                 DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
                 
@@ -49,7 +45,7 @@ def init_db_pool():
                 minconn=1,
                 maxconn=10,
                 dsn=DATABASE_URL,
-                sslmode='require' if 'amazonaws.com' in DATABASE_URL else 'prefer'
+                sslmode='require'
             )
             print("✅ Database connection established")
             init_db()
@@ -100,7 +96,18 @@ def get_db_cursor():
         db_pool.putconn(conn)
 
 def init_db():
+    """Initialize database tables"""
     with get_db_cursor() as cur:
+        # Core tables
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         cur.execute('''
             CREATE TABLE IF NOT EXISTS students (
                 id SERIAL PRIMARY KEY,
@@ -135,16 +142,27 @@ def init_db():
             )
         ''')
         
-        cur.execute("SELECT 1 FROM pg_tables WHERE tablename = 'users'")
+        # New tables for enhanced functionality
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS subjects (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                code TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS student_subjects (
+                student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+                subject_id INTEGER REFERENCES subjects(id) ON DELETE CASCADE,
+                PRIMARY KEY (student_id, subject_id)
+            )
+        ''')
+        
+        # Create admin user if not exists
+        cur.execute("SELECT 1 FROM users WHERE username = 'admin'")
         if not cur.fetchone():
-            cur.execute('''
-                CREATE TABLE users (
-                    id SERIAL PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
             hashed_password = generate_password_hash('admin')
             cur.execute('''
                 INSERT INTO users (username, password)
@@ -153,6 +171,9 @@ def init_db():
 
 # Initialize the connection pool
 init_db_pool()
+
+# ... [Rest of your Flask routes and functions remain unchanged] ...
+
 
 # Error handlers
 @app.errorhandler(psycopg2.OperationalError)
