@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <div class="header">
+    {% if logo_base64 %}
+    <img src="data:image/jpg;base64,{{ logo_base64 }}" alt="School Logo" class="pdf-logo">
+    {% endif %}
+    <h2>SCHOOL FEES PAYMENT RECEIPT</h2>
+    <p>Official Receipt</p>
+</div>
     <meta charset="UTF-8">
     <title>Receipt #{{ payment.receipt_number }}</title>
     <style>
