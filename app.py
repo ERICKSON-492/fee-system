@@ -631,7 +631,7 @@ def outstanding_report_pdf():
 
 if __name__ == '__main__':
     try:
-        port = int(os.environ.get('PORT', 5000))
+        port = int(os.environ.get('PORT', 5432))
         app.run(host='0.0.0.0', port=port)
     except Exception as e:
         print(f"Failed to start application: {str(e)}")
