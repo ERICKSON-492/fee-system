@@ -1,8 +1,7 @@
-
 import os
 import time
 import psycopg2
-from psycopg2 import pool
+from psycopg2 import pool, extras
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session, jsonify
 from weasyprint import HTML
@@ -76,13 +75,16 @@ def get_db_connection():
         db_pool.putconn(conn)
 
 @contextmanager
-def get_db_cursor():
+def get_db_cursor(dict_cursor=False):
     if not db_pool:
         raise RuntimeError("Database connection pool not initialized")
         
     conn = db_pool.getconn()
     try:
-        cur = conn.cursor()
+        if dict_cursor:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+        else:
+            cur = conn.cursor()
         try:
             yield cur
             conn.commit()
@@ -142,24 +144,6 @@ def init_db():
             )
         ''')
         
-        # New tables for enhanced functionality
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS subjects (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                code TEXT UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS student_subjects (
-                student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
-                subject_id INTEGER REFERENCES subjects(id) ON DELETE CASCADE,
-                PRIMARY KEY (student_id, subject_id)
-            )
-        ''')
-        
         # Create admin user if not exists
         cur.execute("SELECT 1 FROM users WHERE username = 'admin'")
         if not cur.fetchone():
@@ -171,9 +155,6 @@ def init_db():
 
 # Initialize the connection pool
 init_db_pool()
-
-# ... [Rest of your Flask routes and functions remain unchanged] ...
-
 
 # Error handlers
 @app.errorhandler(psycopg2.OperationalError)
@@ -254,7 +235,7 @@ def view_students():
     query += ' ORDER BY name'
     
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute(query, params)
             students = cur.fetchall()
     except Exception as e:
@@ -308,7 +289,7 @@ def edit_student(id):
             print(f"Error in edit_student: {str(e)}")
     
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT * FROM students WHERE id = %s', (id,))
             student = cur.fetchone()
     except Exception as e:
@@ -339,7 +320,7 @@ def delete_student(id):
 @login_required
 def view_terms():
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT * FROM terms ORDER BY name')
             terms = cur.fetchall()
     except Exception as e:
@@ -400,7 +381,7 @@ def edit_term(id):
             print(f"Error in edit_term: {str(e)}")
     
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
             term = cur.fetchone()
     except Exception as e:
@@ -431,7 +412,7 @@ def delete_term(id):
 @login_required
 def view_payments():
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT p.id, s.name AS student_name, s.admission_no,
                        t.name AS term_name, p.amount_paid, p.payment_date,
@@ -541,7 +522,7 @@ def edit_payment(id):
             print(f"Error in edit_payment: {str(e)}")
     
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date,
                        s.name AS student_name, s.admission_no,
@@ -589,7 +570,7 @@ def delete_payment(id):
 @login_required
 def view_receipt(payment_id):
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
@@ -639,7 +620,7 @@ def view_receipt(payment_id):
 @login_required
 def generate_receipt_pdf(payment_id):
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
@@ -695,7 +676,7 @@ def generate_receipt_pdf(payment_id):
 @login_required
 def outstanding_report():
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no,
                        SUM(t.amount) AS total_due,
@@ -720,7 +701,7 @@ def outstanding_report():
 @login_required
 def outstanding_report_pdf():
     try:
-        with get_db_cursor() as cur:
+        with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no,
                        SUM(t.amount) AS total_due,
