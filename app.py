@@ -621,61 +621,6 @@ def view_receipt(payment_id):
                          outstanding_balance=outstanding_balance,
                          current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                          qr_code=qr_b64)
-@app.route('/receipt/<int:payment_id>/pdf')
-@login_required
-def generate_receipt_pdf(payment_id):
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('''
-                SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
-                       s.name AS student_name, s.admission_no, s.form,
-                       t.name AS term_name, t.amount AS term_amount
-                FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
-                WHERE p.id = %s
-            ''', (payment_id,))
-            payment = cur.fetchone()
-            
-            if not payment:
-                return "Receipt not found", 404
-            
-            cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) FROM payments
-                WHERE student_id = %s
-            ''', (payment['student_id'],))
-            total_paid = cur.fetchone()[0]
-            
-            outstanding_balance = float(payment['term_amount']) - total_paid
-            
-            qr_data = f"""
-            Receipt: {payment['receipt_number']}
-            Student: {payment['student_name']} ({payment['admission_no']})
-            Amount: {payment['amount_paid']:.2f}
-            Date: {payment['payment_date']}
-            """
-            qr_img = qrcode.make(qr_data)
-            qr_buffer = BytesIO()
-            qr_img.save(qr_buffer, format="PNG")
-            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
-            
-            html = render_template('receipt_pdf.html',
-                                 payment=payment,
-                                 total_paid=total_paid,
-                                 outstanding_balance=outstanding_balance,
-                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                 qr_code=qr_b64)
-            
-            pdf = HTML(string=html).write_pdf()
-            
-            response = make_response(pdf)
-            response.headers['Content-Type'] = 'application/pdf'
-            response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
-            return response
-    except Exception as e:
-        flash('Error generating PDF receipt', 'danger')
-        print(f"Error in generate_receipt_pdf: {str(e)}")
-        return redirect(url_for('view_payments'))
 
 @app.route('/reports/outstanding')
 @login_required
@@ -701,7 +646,71 @@ def outstanding_report():
         report_data = []
     
     return render_template('outstanding_report.html', report_data=report_data)
-
+@app.route('/receipt/<int:payment_id>/pdf')
+@login_required
+def generate_receipt_pdf(payment_id):
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get payment details with all required fields
+            cur.execute('''
+                SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
+                       s.name AS student_name, s.admission_no, s.form,
+                       t.name AS term_name, t.amount AS term_amount
+                FROM payments p
+                JOIN students s ON p.student_id = s.id
+                JOIN terms t ON p.term_id = t.id
+                WHERE p.id = %s
+            ''', (payment_id,))
+            payment = cur.fetchone()
+            
+            if not payment:
+                flash('Receipt not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
+            # Calculate total paid by this student
+            cur.execute('''
+                SELECT COALESCE(SUM(amount_paid), 0) 
+                FROM payments
+                WHERE student_id = %s
+            ''', (payment['student_id'],))
+            total_paid = float(cur.fetchone()[0])
+            
+            outstanding_balance = float(payment['term_amount']) - total_paid
+            
+            # Generate QR code
+            qr_data = f"""
+            Receipt: {payment['receipt_number']}
+            Student: {payment['student_name']} ({payment['admission_no']})
+            Amount: {payment['amount_paid']:.2f}
+            Date: {payment['payment_date']}
+            """
+            qr_img = qrcode.make(qr_data)
+            qr_buffer = BytesIO()
+            qr_img.save(qr_buffer, format="PNG")
+            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+            
+            # Get logo as base64
+            logo_base64 = get_logo_base64()
+            
+            html = render_template('receipt_pdf.html',
+                                payment=payment,
+                                total_paid=total_paid,
+                                outstanding_balance=outstanding_balance,
+                                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                qr_code=qr_b64,
+                                logo_base64=logo_base64)
+            
+            pdf = HTML(string=html).write_pdf()
+            
+            response = make_response(pdf)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
+            return response
+            
+    except Exception as e:
+        flash('Error generating PDF receipt', 'danger')
+        print(f"Error in generate_receipt_pdf: {str(e)}")
+        return redirect(url_for('view_payments'))
 @app.route('/reports/outstanding/pdf')
 @login_required
 def outstanding_report_pdf():
