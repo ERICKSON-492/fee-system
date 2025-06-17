@@ -124,7 +124,32 @@ def init_db():
             )
         ''')
         
+        # Create terms table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS terms (
+                id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                amount DECIMAL(10,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
+        # Create payments table
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+                amount_paid DECIMAL(10,2) NOT NULL,
+                payment_date DATE NOT NULL,
+                receipt_number TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create payment_allocations table
         cur.execute('''
             CREATE TABLE IF NOT EXISTS payment_allocations (
                 payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
@@ -150,7 +175,8 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Add this to your existing init_db() function
+        
+        # Create outstanding balance notices table
         cur.execute('''
             CREATE TABLE IF NOT EXISTS outstanding_balance_notices (
                 id SERIAL PRIMARY KEY,
@@ -164,7 +190,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-         cur.execute('''
+        
+        # Create term_balances table
+        cur.execute('''
             CREATE TABLE IF NOT EXISTS term_balances (
                 student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
                 term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
@@ -173,15 +201,6 @@ def init_db():
             )
         ''')
         
-        # Create payment_allocations if not exists
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS payment_allocations (
-                payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
-                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
-                amount DECIMAL(10,2) NOT NULL,
-                PRIMARY KEY (payment_id, term_id)
-            )
-        ''')
         # Create indexes
         cur.execute('CREATE INDEX IF NOT EXISTS idx_payments_student_id ON payments(student_id)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_payments_term_id ON payments(term_id)')
@@ -192,8 +211,7 @@ def init_db():
         if not cur.fetchone():
             hashed_password = generate_password_hash('admin')
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', 
-                        ('admin', hashed_password))
-
+                       ('admin', hashed_password))
 def calculate_student_balance(student_id):
     """Calculate balances with carry-over support"""
     with get_db_cursor(commit=True) as cur:
