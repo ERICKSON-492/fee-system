@@ -3,78 +3,111 @@
 {% block title %}Outstanding Notice #{{ notice.reference_number }}{% endblock %}
 
 {% block extra_css %}
-<style>
-    .notice-container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 20px;
-        border: 1px solid #ddd;
-        background-color: white;
-    }
-    .notice-header {
-        text-align: center;
-        margin-bottom: 20px;
-        border-bottom: 2px solid #333;
-        padding-bottom: 10px;
-    }
-    .notice-logo {
-        max-height: 80px;
-        margin-bottom: 10px;
-    }
-    .notice-title {
-        font-size: 24px;
-        font-weight: bold;
-        color: #dc3545;
-    }
-    .notice-details {
-        margin-bottom: 30px;
-    }
-    .notice-table {
-        width: 100%;
-        margin-bottom: 20px;
-    }
-    .notice-table th {
-        text-align: left;
-        padding: 5px;
-        background-color: #f8f9fa;
-    }
-    .notice-table td {
-        padding: 5px;
-        border-bottom: 1px solid #ddd;
-    }
-    .notice-footer {
-        margin-top: 30px;
-        text-align: center;
-        font-size: 12px;
-        color: #666;
-    }
-    .qr-code {
-        width: 100px;
-        height: 100px;
-        margin: 0 auto;
-        display: block;
-    }
-    .signature-line {
-        border-top: 1px solid #333;
-        width: 200px;
-        margin: 30px auto 0;
-        text-align: center;
-        padding-top: 5px;
-    }
-    .status-badge {
-        font-size: 16px;
-        padding: 5px 10px;
-    }
-    .overdue {
-        color: #dc3545;
-        font-weight: bold;
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fas fa-file-invoice"></i> Outstanding Notice #{{ notice.reference_number }}</h2>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Outstanding Balance Notice</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .notice { max-width: 800px; margin: 0 auto; border: 1px solid #ddd; padding: 20px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .logo { max-height: 80px; }
+        .title { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .subtitle { font-size: 18px; margin-bottom: 20px; }
+        .info { margin-bottom: 30px; }
+        .info-row { display: flex; margin-bottom: 10px; }
+        .info-label { font-weight: bold; width: 200px; }
+        .balance { font-size: 24px; font-weight: bold; text-align: center; margin: 30px 0; padding: 15px; background-color: #f8d7da; }
+        .qr-code { text-align: center; margin: 20px 0; }
+        .footer { margin-top: 30px; text-align: center; font-size: 12px; }
+        .due-date { color: red; font-weight: bold; }
+        .status { 
+            padding: 5px 10px; 
+            border-radius: 3px; 
+            font-weight: bold;
+            background-color: {% if notice.is_paid %}#28a745{% else %}#ffc107{% endif %};
+            color: {% if notice.is_paid %}white{% else %}black{% endif %};
+        }
+    </style>
+</head>
+<body>
+    <div class="notice">
+        <div class="header">
+            {% if logo_base64 %}
+            <img src="data:image/jpeg;base64,{{ logo_base64 }}" class="logo" alt="School Logo">
+            {% endif %}
+            <div class="title">ABC HIGH SCHOOL</div>
+            <div class="subtitle">OUTSTANDING BALANCE NOTICE</div>
+        </div>
+        
+        <div class="info">
+            <div class="info-row">
+                <div class="info-label">Reference Number:</div>
+                <div>{{ notice.reference_number }}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Student Name:</div>
+                <div>{{ notice.student_name }}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Admission Number:</div>
+                <div>{{ notice.admission_no }}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Form:</div>
+                <div>{{ notice.form }}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Issued Date:</div>
+                <div>{{ notice.issued_date.strftime('%d/%m/%Y') }}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Due Date:</div>
+                <div class="{% if notice.due_date < current_date and not notice.is_paid %}due-date{% endif %}">
+                    {{ notice.due_date.strftime('%d/%m/%Y') }}
+                    {% if notice.due_date < current_date and not notice.is_paid %}
+                    (OVERDUE)
+                    {% endif %}
+                </div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Status:</div>
+                <div>
+                    <span class="status">
+                        {{ 'PAID' if notice.is_paid else 'PENDING' }}
+                    </span>
+                    {% if notice.is_paid %}
+                    (Paid on {{ notice.paid_date.strftime('%d/%m/%Y') }})
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="balance">
+            OUTSTANDING BALANCE: KSh {{ "%.2f"|format(notice.amount) }}
+        </div>
+        
         <div>
-            <a href="{{ url_for('student_outstanding_details', student_id=notice.student_id) }}" class
+            <h3>Payment Instructions</h3>
+            <p>Please settle this balance by the due date to avoid any inconveniences. Payment can be made:</p>
+            <ul>
+                <li>At the school accounts office during working hours (8:00 AM - 4:00 PM)</li>
+                <li>Via bank transfer to our account: Bank Name, Account No: 123456789, Branch: Main Branch</li>
+                <li>Via M-Pesa Paybill: 123456, Account Number: {{ notice.admission_no }}</li>
+            </ul>
+            <p>Please present this notice or quote the reference number when making payment.</p>
+        </div>
+        
+        <div class="qr-code">
+            <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code">
+            <p>Scan to verify this notice</p>
+        </div>
+        
+        <div class="footer">
+            <p>Generated on {{ current_date.strftime('%d/%m/%Y %H:%M') }}</p>
+            <p>For any queries, please contact the accounts office at accounts@school.edu or 0700123456</p>
+        </div>
+    </div>
+</body>
+</html>
