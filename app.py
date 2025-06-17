@@ -164,7 +164,24 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+         cur.execute('''
+            CREATE TABLE IF NOT EXISTS term_balances (
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+                balance DECIMAL(10,2) NOT NULL,
+                PRIMARY KEY (student_id, term_id)
+            )
+        ''')
         
+        # Create payment_allocations if not exists
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS payment_allocations (
+                payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+                amount DECIMAL(10,2) NOT NULL,
+                PRIMARY KEY (payment_id, term_id)
+            )
+        ''')
         # Create indexes
         cur.execute('CREATE INDEX IF NOT EXISTS idx_payments_student_id ON payments(student_id)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_payments_term_id ON payments(term_id)')
@@ -824,20 +841,36 @@ def edit_payment(id):
 def delete_payment(id):
     try:
         with get_db_cursor(commit=True) as cur:
-            # Get student ID before deleting
+            # First check if the payment exists and get student_id
             cur.execute('SELECT student_id FROM payments WHERE id = %s', (id,))
-            result = cur.fetchone()
-            if not result:
+            payment = cur.fetchone()
+            
+            if not payment:
                 flash('Payment not found', 'danger')
                 return redirect(url_for('view_payments'))
+                
+            student_id = payment[0]
             
-            student_id = result[0]
+            # Delete payment allocations first (if table exists)
+            try:
+                cur.execute('DELETE FROM payment_allocations WHERE payment_id = %s', (id,))
+            except psycopg2.Error as e:
+                # If table doesn't exist yet, just continue
+                if 'relation "payment_allocations" does not exist' not in str(e):
+                    raise
             
-            # Delete payment
+            # Delete the payment
             cur.execute('DELETE FROM payments WHERE id = %s', (id,))
             
-            # Recalculate balance
-            calculate_student_balance(student_id)
+            # Recalculate balances (handles case where term_balances doesn't exist yet)
+            try:
+                calculate_student_balance(student_id)
+            except psycopg2.Error as e:
+                if 'relation "term_balances" does not exist' in str(e):
+                    # If the table doesn't exist, just update the main balance
+                    calculate_simple_balance(student_id)
+                else:
+                    raise
             
             flash('Payment deleted successfully!', 'success')
     except Exception as e:
@@ -846,6 +879,30 @@ def delete_payment(id):
     
     return redirect(url_for('view_payments'))
 
+def calculate_simple_balance(student_id):
+    """Fallback balance calculation without term_balances table"""
+    with get_db_cursor(commit=True) as cur:
+        # Get total fees due
+        cur.execute('SELECT COALESCE(SUM(amount), 0) FROM terms')
+        total_fees = cur.fetchone()[0] or Decimal('0')
+        
+        # Get total payments made
+        cur.execute('SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = %s', (student_id,))
+        total_paid = cur.fetchone()[0] or Decimal('0')
+        
+        # Calculate balance
+        balance = total_fees - total_paid
+        
+        # Update balance record
+        cur.execute('''
+            INSERT INTO student_balances (student_id, current_balance)
+            VALUES (%s, %s)
+            ON CONFLICT (student_id) DO UPDATE
+            SET current_balance = EXCLUDED.current_balance,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (student_id, balance))
+        
+        return balance
 @app.route('/receipt/<int:payment_id>')
 def view_receipt(payment_id):
     """View payment receipt with detailed allocation information"""
