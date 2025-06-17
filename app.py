@@ -867,60 +867,82 @@ def delete_payment(id):
                 flash('Payment not found', 'danger')
                 return redirect(url_for('view_payments'))
                 
+            # Access the student_id from the tuple (index 0)
             student_id = payment[0]
             
-            # Delete payment allocations first (if table exists)
+            # Delete payment allocations first
             try:
                 cur.execute('DELETE FROM payment_allocations WHERE payment_id = %s', (id,))
-            except psycopg2.Error as e:
-                # If table doesn't exist yet, just continue
-                if 'relation "payment_allocations" does not exist' not in str(e):
-                    raise
+            except Exception as e:
+                logger.warning(f"Could not delete payment allocations: {str(e)}")
             
             # Delete the payment
             cur.execute('DELETE FROM payments WHERE id = %s', (id,))
             
-            # Recalculate balances (handles case where term_balances doesn't exist yet)
+            # Recalculate balances
             try:
-                calculate_student_balance(student_id)
-            except psycopg2.Error as e:
-                if 'relation "term_balances" does not exist' in str(e):
-                    # If the table doesn't exist, just update the main balance
-                    calculate_simple_balance(student_id)
-                else:
-                    raise
+                # Get all terms
+                cur.execute('SELECT id FROM terms')
+                terms = cur.fetchall()
+                
+                # Calculate balance for each term
+                for term in terms:
+                    term_id = term[0]  # Access term ID from tuple
+                    
+                    # Get total paid for this term
+                    cur.execute('''
+                        SELECT COALESCE(SUM(amount_paid), 0) 
+                        FROM payments 
+                        WHERE student_id = %s AND term_id = %s
+                    ''', (student_id, term_id))
+                    total_paid = cur.fetchone()[0] or Decimal('0')
+                    
+                    # Get term amount
+                    cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
+                    term_amount = cur.fetchone()[0] or Decimal('0')
+                    
+                    # Update term balance
+                    term_balance = term_amount - total_paid
+                    cur.execute('''
+                        INSERT INTO term_balances (student_id, term_id, balance)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (student_id, term_id) DO UPDATE
+                        SET balance = EXCLUDED.balance
+                    ''', (student_id, term_id, term_balance))
+                
+                # Update overall balance
+                cur.execute('''
+                    SELECT COALESCE(SUM(amount), 0) FROM terms
+                ''')
+                total_fees = cur.fetchone()[0] or Decimal('0')
+                
+                cur.execute('''
+                    SELECT COALESCE(SUM(amount_paid), 0) 
+                    FROM payments 
+                    WHERE student_id = %s
+                ''', (student_id,))
+                total_paid = cur.fetchone()[0] or Decimal('0')
+                
+                overall_balance = total_fees - total_paid
+                cur.execute('''
+                    INSERT INTO student_balances (student_id, current_balance)
+                    VALUES (%s, %s)
+                    ON CONFLICT (student_id) DO UPDATE
+                    SET current_balance = EXCLUDED.current_balance
+                ''', (student_id, overall_balance))
+                
+            except Exception as e:
+                logger.error(f"Error recalculating balances: {str(e)}")
+                flash('Payment deleted but balance recalculation failed', 'warning')
+                return redirect(url_for('view_payments'))
             
             flash('Payment deleted successfully!', 'success')
+            return redirect(url_for('view_payments'))
+            
     except Exception as e:
         logger.error(f"Error in delete_payment: {str(e)}")
         flash(f'Error deleting payment: {str(e)}', 'danger')
-    
-    return redirect(url_for('view_payments'))
-
-def calculate_simple_balance(student_id):
-    """Fallback balance calculation without term_balances table"""
-    with get_db_cursor(commit=True) as cur:
-        # Get total fees due
-        cur.execute('SELECT COALESCE(SUM(amount), 0) FROM terms')
-        total_fees = cur.fetchone()[0] or Decimal('0')
-        
-        # Get total payments made
-        cur.execute('SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = %s', (student_id,))
-        total_paid = cur.fetchone()[0] or Decimal('0')
-        
-        # Calculate balance
-        balance = total_fees - total_paid
-        
-        # Update balance record
-        cur.execute('''
-            INSERT INTO student_balances (student_id, current_balance)
-            VALUES (%s, %s)
-            ON CONFLICT (student_id) DO UPDATE
-            SET current_balance = EXCLUDED.current_balance,
-                updated_at = CURRENT_TIMESTAMP
-        ''', (student_id, balance))
-        
-        return balance
+        return redirect(url_for('view_payments'))
 @app.route('/receipt/<int:payment_id>')
 def view_receipt(payment_id):
     """View payment receipt with detailed allocation information"""
