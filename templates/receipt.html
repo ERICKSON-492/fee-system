@@ -7,7 +7,9 @@
     /* A5 size styling */
     body {
         background-color: #f8f9fa;
+        font-family: Arial, sans-serif;
     }
+    
     .receipt-container {
         width: 148mm;
         min-height: 210mm;
@@ -15,8 +17,9 @@
         margin: 0 auto;
         background: white;
         box-shadow: 0 0 5px rgba(0,0,0,0.1);
-        font-family: Arial, sans-serif;
     }
+    
+    /* Header Styles */
     .receipt-header {
         text-align: center;
         margin-bottom: 8mm;
@@ -34,12 +37,16 @@
         font-size: 10pt;
         color: #666;
     }
+    
+    /* Details Section */
     .receipt-details {
         display: flex;
         justify-content: space-between;
         font-size: 9pt;
         margin-bottom: 8mm;
     }
+    
+    /* Table Styles */
     .receipt-table {
         width: 100%;
         border-collapse: collapse;
@@ -62,6 +69,8 @@
         font-weight: bold;
         background-color: #fff2f2;
     }
+    
+    /* Verification Section */
     .qr-code-container {
         width: 35mm;
         margin: 0 auto;
@@ -76,6 +85,8 @@
         display: inline-block;
         margin-top: 10mm;
     }
+    
+    /* Footer */
     .receipt-footer {
         font-size: 8pt;
         color: #666;
@@ -83,6 +94,7 @@
         margin-top: 5mm;
     }
 
+    /* Print Specific Styles */
     @media print {
         body {
             background: white;
@@ -106,7 +118,7 @@
 
 {% block content %}
 <div class="receipt-container">
-    <!-- Header -->
+    <!-- Header Section -->
     <div class="receipt-header">
         {% if logo_base64 %}
         <img src="data:image/png;base64,{{ logo_base64 }}" class="receipt-logo" alt="School Logo">
@@ -115,7 +127,7 @@
         <div class="receipt-subtitle">SCHOOL FEES PAYMENT RECEIPT</div>
     </div>
     
-    <!-- Details -->
+    <!-- Transaction Details -->
     <div class="receipt-details">
         <div>
             <strong>Receipt No:</strong> {{ payment.receipt_number }}<br>
@@ -129,7 +141,7 @@
         </div>
     </div>
     
-    <!-- Payment Details -->
+    <!-- Payment Breakdown -->
     <table class="receipt-table">
         <thead>
             <tr>
@@ -152,29 +164,8 @@
             </tr>
         </tbody>
     </table>
-    <!-- In your receipt.html template -->
-<div class="balance-info">
-    <h4>Payment Summary</h4>
-    <p>Term: {{ payment.term_name }}</p>
-    <p>Term Fee: KSh{{ "%.2f"|format(payment.term_amount|float) }}</p>
-    <p>Amount Paid: KSh{{ "%.2f"|format(amount_paid) }}</p>
-    <p>Total Paid This Term: KSh{{ "%.2f"|format(term_total_paid) }}</p>
-    <p>Term Balance: 
-        {% if term_balance > 0 %}
-            <span class="text-danger">KSh{{ "%.2f"|format(term_balance) }} Due</span>
-        {% else %}
-            <span class="text-success">KSh{{ "%.2f"|format(-term_balance) }} Credit</span>
-        {% endif %}
-    </p>
-    <p>Cumulative Balance: 
-        {% if cumulative_balance < 0 %}
-            <span class="text-danger">KSh{{ "%.2f"|format(-cumulative_balance) }} Due</span>
-        {% else %}
-            <span class="text-success">KSh{{ "%.2f"|format(cumulative_balance) }} Credit</span>
-        {% endif %}
-    </p>
-</div>
-    <!-- Verification -->
+    
+    <!-- Verification Section -->
     <div class="row">
         <div class="col-6 text-center">
             <div class="qr-code-container">
@@ -197,7 +188,7 @@
     </div>
 </div>
 
-<!-- Print Controls -->
+<!-- Print Controls (Hidden when printing) -->
 <div class="text-center no-print mt-3">
     <button onclick="window.print()" class="btn btn-primary">
         <i class="bi bi-printer"></i> Print Receipt
