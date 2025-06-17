@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Outstanding Balances</h2>
+    
+    <div class="summary-card mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h5>Total Students</h5>
+                        <p class="display-4">{{ stats.total_students }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Total Outstanding</h5>
+                        <p class="display-4">KSh {{ "%.2f"|format(stats.total_outstanding) }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h5>Active Notices</h5>
+                        <p class="display-4">{{ stats.total_active_notices }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="row">
+                <div class="col-md-6">
+                    <h4>Students with Outstanding Balances</h4>
+                </div>
+                <div class="col-md-6 text-right">
+                    <span class="badge badge-secondary">As of {{ current_date.strftime('%d/%m/%Y') }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Admission No</th>
+                        <th>Student Name</th>
+                        <th>Form</th>
+                        <th>Balance</th>
+                        <th>Notices</th>
+                        <th>Latest Due Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ student.admission_no }}</td>
+                        <td>{{ student.name }}</td>
+                        <td>{{ student.form }}</td>
+                        <td class="text-danger font-weight-bold">KSh {{ "%.2f"|format(student.balance) }}</td>
+                        <td>{{ student.notices_count }}</td>
+                        <td>
+                            {% if student.latest_due_date %}
+                                {{ student.latest_due_date.strftime('%d/%m/%Y') }}
+                                {% if student.latest_due_date < current_date %}
+                                    <span class="badge badge-danger">Overdue</span>
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('student_outstanding_details', student_id=student.id) }}" 
+                               class="btn btn-sm btn-primary">
+                                View Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center">No students with outstanding balances</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
