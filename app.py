@@ -611,7 +611,7 @@ def add_payment():
                                 students=students, 
                                 terms=terms,
                                 default_date=datetime.now().strftime('%Y-%m-%d'))
-        
+                                
         try:
             amount_paid = Decimal(amount_paid)
             if amount_paid <= 0:
@@ -673,6 +673,7 @@ def add_payment():
                          students=students, 
                          terms=terms,
                          default_date=datetime.now().strftime('%Y-%m-%d'))
+                         datetime=datetime)
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
