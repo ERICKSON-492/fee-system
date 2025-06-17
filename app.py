@@ -471,19 +471,28 @@ def view_payments():
 def add_payment():
     if request.method == 'POST':
         try:
-            # Get form data
-            admission_no = request.form.get('admission_no', '').strip().upper()
-            manual_admission = request.form.get('manual_admission', '').strip().upper()
+            # Get input method first
+            input_method = request.form.get('student_input_method', 'select')
+            
+            # Get admission number based on selected method
+            if input_method == 'manual':
+                admission_no = request.form.get('manual_admission', '').strip().upper()
+                if not admission_no:
+                    flash('Please enter an admission number', 'danger')
+                    return redirect(url_for('add_payment'))
+            else:
+                admission_no = request.form.get('admission_no', '').strip().upper()
+                if not admission_no:
+                    flash('Please select a student', 'danger')
+                    return redirect(url_for('add_payment'))
+
+            # Get other form data
             term_id = request.form.get('term_id', '').strip()
             amount_paid = request.form.get('amount_paid', '').strip()
             payment_date = request.form.get('payment_date', '').strip()
             
-            # Use manual admission if provided
-            if manual_admission:
-                admission_no = manual_admission
-            
             # Validate required fields
-            if not all([admission_no, term_id, amount_paid, payment_date]):
+            if not all([term_id, amount_paid, payment_date]):
                 flash('All fields are required', 'danger')
                 return redirect(url_for('add_payment'))
             
@@ -545,10 +554,11 @@ def add_payment():
         except Exception as e:
             flash('An error occurred while processing your payment', 'danger')
             app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
+            return redirect(url_for('add_payment'))
     
     # GET request - show the form
     try:
-        with get_db_cursor() as cur:  # No commit needed for read-only operations
+        with get_db_cursor() as cur:
             cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
             students = cur.fetchall()
             
@@ -563,7 +573,7 @@ def add_payment():
     except Exception as e:
         flash('Error loading payment form', 'danger')
         app.logger.error(f"Form loading error: {str(e)}")
-        return redirect(url_for('view_payments'))
+        return redirect(url_for('view_payments'))        
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
