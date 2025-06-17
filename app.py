@@ -2,14 +2,13 @@ import os
 import time
 import psycopg2
 from psycopg2 import pool, extras
-from datetime import datetime, timedelta  # Ensure this is at the top of your app.py
+from datetime import datetime, timedelta
 from flask import request
 from flask_paginate import Pagination, get_page_args
-import secrets  # Add this with your other imports
+import secrets
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session, jsonify
 from weasyprint import HTML
 from decimal import Decimal, InvalidOperation
-
 import qrcode
 import base64
 from io import BytesIO
@@ -41,7 +40,6 @@ def init_db_pool():
             if not DATABASE_URL:
                 raise ValueError("DATABASE_URL environment variable is required")
                 
-            # Ensure connection string uses postgresql://
             if DATABASE_URL.startswith('postgres://'):
                 DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
                 
@@ -61,6 +59,7 @@ def init_db_pool():
             else:
                 print("❌ Failed to connect to database after multiple attempts")
                 sys.exit(1)
+
 def get_logo_base64():
     try:
         logo_path = os.path.join(app.static_folder, 'images', 'LOGO.jpg')
@@ -69,6 +68,7 @@ def get_logo_base64():
     except Exception as e:
         print(f"Error loading logo: {str(e)}")
         return None
+
 @atexit.register
 def shutdown_db_pool():
     global db_pool
@@ -110,10 +110,10 @@ def get_db_cursor(dict_cursor=False, commit=False):
             cur.close()
     finally:
         db_pool.putconn(conn)
+
 def init_db():
     """Initialize database tables"""
     with get_db_cursor() as cur:
-        # Core tables
         cur.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -157,7 +157,6 @@ def init_db():
             )
         ''')
         
-        # Create admin user if not exists
         cur.execute("SELECT 1 FROM users WHERE username = 'admin'")
         if not cur.fetchone():
             hashed_password = generate_password_hash('admin')
@@ -168,6 +167,37 @@ def init_db():
 
 # Initialize the connection pool
 init_db_pool()
+
+# Helper functions
+def get_students():
+    """Fetch all students with admission numbers"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute("""
+                SELECT id, name, admission_no 
+                FROM students 
+                ORDER BY name
+            """)
+            return cur.fetchall()
+    except Exception as e:
+        app.logger.error(f"Error fetching students: {str(e)}")
+        flash('Error loading student list', 'danger')
+        return []
+
+def get_terms():
+    """Fetch all available terms"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute("""
+                SELECT id, name, amount
+                FROM terms
+                ORDER BY name
+            """)
+            return cur.fetchall()
+    except Exception as e:
+        app.logger.error(f"Error fetching terms: {str(e)}")
+        flash('Error loading term list', 'danger')
+        return []
 
 # Error handlers
 @app.errorhandler(psycopg2.OperationalError)
@@ -199,6 +229,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# Authentication routes
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -229,11 +260,13 @@ def logout():
     flash('You have been logged out', 'info')
     return redirect(url_for('login'))
 
+# Dashboard
 @app.route('/')
 @login_required
 def dashboard():
     return redirect(url_for('view_students'))
 
+# Student management
 @app.route('/students')
 @login_required
 def view_students():
@@ -329,6 +362,7 @@ def delete_student(id):
     
     return redirect(url_for('view_students'))
 
+# Term management
 @app.route('/terms')
 @login_required
 def view_terms():
@@ -351,7 +385,7 @@ def add_term():
         amount = request.form['amount'].strip()
         
         try:
-            amount = float(amount)
+            amount = Decimal(amount)
             with get_db_cursor() as cur:
                 cur.execute(
                     'INSERT INTO terms (name, amount) VALUES (%s, %s)',
@@ -359,7 +393,7 @@ def add_term():
                 )
                 flash('Term added successfully!', 'success')
                 return redirect(url_for('view_terms'))
-        except ValueError:
+        except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
         except psycopg2.IntegrityError:
             flash('Term name must be unique!', 'danger')
@@ -377,7 +411,7 @@ def edit_term(id):
         amount = request.form['amount'].strip()
         
         try:
-            amount = float(amount)
+            amount = Decimal(amount)
             with get_db_cursor() as cur:
                 cur.execute(
                     'UPDATE terms SET name = %s, amount = %s WHERE id = %s',
@@ -385,7 +419,7 @@ def edit_term(id):
                 )
                 flash('Term updated successfully!', 'success')
                 return redirect(url_for('view_terms'))
-        except ValueError:
+        except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
         except psycopg2.IntegrityError:
             flash('Term name must be unique!', 'danger')
@@ -421,6 +455,7 @@ def delete_term(id):
     
     return redirect(url_for('view_terms'))
 
+# Payment management
 @app.route('/payments')
 @login_required
 def view_payments():
@@ -428,7 +463,6 @@ def view_payments():
     
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Base query
             query = '''
                 SELECT p.id, p.receipt_number, p.amount_paid, p.payment_date,
                        s.id as student_id, s.name as student_name, s.admission_no,
@@ -447,11 +481,9 @@ def view_payments():
             cur.execute(query, params)
             payments = cur.fetchall()
             
-            # Convert None amounts to 0 and ensure float type
             for payment in payments:
                 payment['amount_paid'] = float(payment['amount_paid']) if payment['amount_paid'] is not None else 0.0
             
-            # Get students and terms for dropdowns
             cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
             students = cur.fetchall()
             
@@ -468,37 +500,6 @@ def view_payments():
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
         return redirect(url_for('dashboard'))
-def get_students():
-    """Fetch all students with admission numbers"""
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute("""
-                SELECT id, name, admission_no 
-                FROM students 
-                ORDER BY name
-            """)
-            return cur.fetchall()
-    except Exception as e:
-        app.logger.error(f"Error fetching students: {str(e)}")
-        flash('Error loading student list', 'danger')
-        return []
-
-def get_terms():
-    """Fetch all available terms"""
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute("""
-                SELECT id, name, amount
-                FROM terms
-                ORDER BY name
-            """)
-            return cur.fetchall()
-    except Exception as e:
-        app.logger.error(f"Error fetching terms: {str(e)}")
-        flash('Error loading term list', 'danger')
-        return []     
-
-# [Other imports remain the same]
 
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
@@ -509,11 +510,42 @@ def add_payment():
     
     if request.method == 'POST':
         try:
-            # [Previous form handling code remains the same until amount validation]
+            input_method = request.form.get('student_input_method', 'select')
+            admission_no = ''
             
-            # Amount validation with Decimal
+            if input_method == 'manual':
+                admission_no = request.form.get('manual_admission', '').strip().upper()
+                if not admission_no:
+                    flash('Please enter an admission number', 'danger')
+                    return render_template('add_payment.html',
+                                        students=students,
+                                        terms=terms,
+                                        today=today,
+                                        form_data=request.form)
+            else:
+                admission_no = request.form.get('admission_no', '').strip().upper()
+                if not admission_no:
+                    flash('Please select a student', 'danger')
+                    return render_template('add_payment.html',
+                                        students=students,
+                                        terms=terms,
+                                        today=today,
+                                        form_data=request.form)
+
+            term_id = request.form.get('term_id')
+            amount_paid = request.form.get('amount_paid')
+            payment_date = request.form.get('payment_date', today)
+            
+            if not all([term_id, amount_paid, payment_date]):
+                flash('All fields are required', 'danger')
+                return render_template('add_payment.html',
+                                    students=students,
+                                    terms=terms,
+                                    today=today,
+                                    form_data=request.form)
+            
             try:
-                amount_paid = Decimal(request.form.get('amount_paid'))
+                amount_paid = Decimal(amount_paid)
                 if amount_paid <= Decimal('0'):
                     flash('Amount must be greater than zero', 'danger')
                     return render_template('add_payment.html',
@@ -532,9 +564,32 @@ def add_payment():
             receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
             
             with get_db_cursor(commit=True) as cur:
-                # [Previous student/term verification]
+                cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
+                student = cur.fetchone()
                 
-                # Record payment with Decimal amount
+                if not student:
+                    flash(f'Student {admission_no} not found', 'danger')
+                    session['pending_payment'] = {
+                        'admission_no': admission_no,
+                        'term_id': term_id,
+                        'amount_paid': str(amount_paid),
+                        'payment_date': payment_date,
+                        'receipt_number': receipt_number
+                    }
+                    return redirect(url_for('add_student_from_payment'))
+                
+                student_id = student[0]
+                
+                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
+                term = cur.fetchone()
+                
+                if not term:
+                    flash('Invalid term selected', 'danger')
+                    return redirect(url_for('add_payment'))
+                
+                term_id, term_amount = term
+                term_amount = Decimal(str(term_amount))
+                
                 cur.execute('''
                     INSERT INTO payments 
                     (student_id, term_id, amount_paid, payment_date, receipt_number)
@@ -544,14 +599,14 @@ def add_payment():
                 
                 payment_id = cur.fetchone()[0]
                 
-                # Calculate balance with consistent Decimal types
                 cur.execute('''
                     SELECT COALESCE(SUM(amount_paid), 0)
                     FROM payments
                     WHERE student_id = %s AND term_id = %s
                 ''', (student_id, term_id))
-                total_paid = Decimal(str(cur.fetchone()[0]))
-                term_amount = Decimal(str(term_amount))
+                total_paid_result = cur.fetchone()[0]
+                total_paid = Decimal(str(total_paid_result)) if total_paid_result else Decimal('0')
+                
                 balance = term_amount - total_paid
                 
                 flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
@@ -570,11 +625,11 @@ def add_payment():
                         students=students,
                         terms=terms,
                         today=today)
+
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
     if request.method == 'POST':
-        # Handle student creation from payment flow
         name = request.form.get('name', '').strip()
         admission_no = request.form.get('admission_no', '').strip().upper()
         form = request.form.get('form', '').strip()
@@ -587,16 +642,20 @@ def add_student_from_payment():
                 )
                 student_id = cur.fetchone()[0]
                 
-                # Process pending payment
                 if 'pending_payment' in session:
                     payment_data = session.pop('pending_payment')
+                    amount_paid = Decimal(payment_data['amount_paid'])
+                    
                     cur.execute('''
                         INSERT INTO payments 
                         (student_id, term_id, amount_paid, payment_date, receipt_number)
                         VALUES (%s, %s, %s, %s, %s)
                         RETURNING id
-                    ''', (student_id, payment_data['term_id'], payment_data['amount_paid'], 
-                          payment_data['payment_date'], payment_data['receipt_number']))
+                    ''', (student_id, 
+                          payment_data['term_id'], 
+                          amount_paid,
+                          payment_data['payment_date'], 
+                          payment_data['receipt_number']))
                     
                     payment_id = cur.fetchone()[0]
                     flash('Student and payment recorded successfully!', 'success')
@@ -607,13 +666,11 @@ def add_student_from_payment():
         except Exception as e:
             flash(f'Error creating student: {str(e)}', 'danger')
     
-    # GET request or failed POST - show form
     payment_data = session.get('pending_payment', {})
     return render_template('add_student_from_payment.html',
                          admission_no=payment_data.get('admission_no', ''),
                          default_form='Form 1')
 
-# Add the corresponding template for add_student_from_payment.html    
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
@@ -624,7 +681,7 @@ def edit_payment(id):
         payment_date = request.form['payment_date'].strip()
         
         try:
-            amount_paid = float(amount_paid)
+            amount_paid = Decimal(amount_paid)
             with get_db_cursor() as cur:
                 cur.execute('''
                     UPDATE payments 
@@ -635,7 +692,7 @@ def edit_payment(id):
                 
                 flash('Payment updated successfully!', 'success')
                 return redirect(url_for('view_payments'))
-        except ValueError:
+        except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
         except Exception as e:
             flash(f'Error updating payment: {str(e)}', 'danger')
@@ -685,12 +742,13 @@ def delete_payment(id):
         print(f"Error in delete_payment: {str(e)}")
     
     return redirect(url_for('view_payments'))
+
+# Receipts and reports
 @app.route('/receipt/<int:payment_id>')
 @login_required
 def view_receipt(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get payment details
             cur.execute('''
                 SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
@@ -706,26 +764,23 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
-            # Convert amounts to float for consistent calculations
-            term_amount = float(payment['term_amount'])
-            amount_paid = float(payment['amount_paid'])
+            term_amount = Decimal(str(payment['term_amount']))
+            amount_paid = Decimal(str(payment['amount_paid']))
             
-            # Calculate total paid by this student
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0)::float
+                SELECT COALESCE(SUM(amount_paid), 0)
                 FROM payments
-                WHERE student_id = %s
-            ''', (payment['student_id'],))
-            total_paid = float(cur.fetchone()[0])
+                WHERE student_id = %s AND term_id = %s
+            ''', (payment['student_id'], payment['term_id']))
+            total_paid_result = cur.fetchone()[0]
+            total_paid = Decimal(str(total_paid_result)) if total_paid_result else Decimal('0')
             
-            # Calculate outstanding balance
             outstanding_balance = term_amount - total_paid
             
-            # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
-            Amount: {amount_paid:.2f}
+            Amount: {float(amount_paid):.2f}
             Date: {payment['payment_date']}
             """
             qr_img = qrcode.make(qr_data)
@@ -733,7 +788,6 @@ def view_receipt(payment_id):
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
             
-            # Get logo as base64
             logo_base64 = get_logo_base64()
             
     except Exception as e:
@@ -743,11 +797,12 @@ def view_receipt(payment_id):
     
     return render_template('receipt.html',
                         payment=payment,
-                        total_paid=total_paid,
-                        outstanding_balance=outstanding_balance,
+                        total_paid=float(total_paid),
+                        outstanding_balance=float(outstanding_balance),
                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         qr_code=qr_b64,
                         logo_base64=logo_base64)
+
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
@@ -767,7 +822,6 @@ def outstanding_report():
             ''')
             report_data = cur.fetchall()
             
-            # Get current datetime
             current_datetime = datetime.now()
             
     except Exception as e:
@@ -779,12 +833,12 @@ def outstanding_report():
     return render_template('outstanding_report.html', 
                          report_data=report_data,
                          current_datetime=current_datetime)
+
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get payment details
             cur.execute('''
                 SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
                        s.name AS student_name, s.admission_no, s.form,
@@ -800,11 +854,9 @@ def generate_receipt_pdf(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
-            # Convert amounts to float
             term_amount = float(payment['term_amount'])
             amount_paid = float(payment['amount_paid'])
             
-            # Calculate total paid
             cur.execute('''
                 SELECT COALESCE(SUM(amount_paid), 0)::float
                 FROM payments
@@ -814,7 +866,6 @@ def generate_receipt_pdf(payment_id):
             
             outstanding_balance = term_amount - total_paid
             
-            # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
@@ -826,10 +877,8 @@ def generate_receipt_pdf(payment_id):
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
             
-            # Get logo
             logo_base64 = get_logo_base64()
             
-            # Render HTML
             html = render_template('receipt_pdf.html',
                                 payment=payment,
                                 total_paid=total_paid,
@@ -838,10 +887,8 @@ def generate_receipt_pdf(payment_id):
                                 qr_code=qr_b64,
                                 logo_base64=logo_base64)
             
-            # Generate PDF
             pdf_bytes = HTML(string=html).write_pdf()
             
-            # Create response
             response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
@@ -857,7 +904,6 @@ def generate_receipt_pdf(payment_id):
 def outstanding_report_pdf():
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get report data
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no,
                        SUM(t.amount)::float AS total_due,
@@ -876,19 +922,15 @@ def outstanding_report_pdf():
                 flash('No outstanding balances found', 'info')
                 return redirect(url_for('outstanding_report'))
 
-            # Get logo
             logo_base64 = get_logo_base64()
 
-            # Render HTML
             html = render_template('outstanding_report_pdf.html',
                                 report_data=report_data,
                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                 logo_base64=logo_base64)
             
-            # Generate PDF
             pdf_bytes = HTML(string=html).write_pdf()
             
-            # Create response
             response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
@@ -899,13 +941,11 @@ def outstanding_report_pdf():
         print(f"Error in outstanding_report_pdf: {str(e)}")
         return redirect(url_for('outstanding_report'))  
 
-
 @app.route('/receipt/outstanding/<int:student_id>')
 @login_required
 def outstanding_balance_receipt(student_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get student balance information
             cur.execute('''
                 SELECT s.id, s.name, s.admission_no, s.form,
                        SUM(t.amount)::float AS total_due,
@@ -923,12 +963,10 @@ def outstanding_balance_receipt(student_id):
                 flash('Student not found', 'danger')
                 return redirect(url_for('outstanding_report'))
 
-            # Prepare all date strings
             current_date = datetime.now().strftime('%d/%m/%Y')
             due_date = (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y')
             reference_no = f"BAL-{student['admission_no']}-{current_date.replace('/', '')}"
 
-            # Generate QR code
             qr_data = f"""Student: {student['name']}
 Adm No: {student['admission_no']}
 Balance: KSh{student['balance']:,.2f}
@@ -943,7 +981,7 @@ Date: {current_date}"""
                                 student=student,
                                 current_date=current_date,
                                 due_date=due_date,
-                                reference_no=reference_no,
+                                reference_no=reference
                                 qr_code=qr_b64,
                                 logo_base64=get_logo_base64())
             
