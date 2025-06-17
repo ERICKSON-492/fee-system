@@ -9,6 +9,8 @@
         body {
             background: white;
             font-size: 10pt;
+            margin: 0;
+            padding: 0;
         }
         body * {
             visibility: hidden;
@@ -28,20 +30,43 @@
             display: none !important;
         }
         .table {
+            width: 100%;
             page-break-inside: avoid;
             font-size: 9pt;
+            border-collapse: collapse;
         }
         .table th, .table td {
             padding: 3px 5px;
+            border: 1px solid #ddd;
         }
         .alert {
             display: none;
         }
+        .term-details {
+            display: block !important;
+        }
     }
     
-    /* Compact receipt link styling */
+    /* Screen styling */
+    @media screen {
+        .report-container {
+            max-width: 100%;
+            padding: 20px;
+        }
+    }
+    
+    /* Compact styling */
     .receipt-link {
         white-space: nowrap;
+    }
+    .term-toggle {
+        cursor: pointer;
+    }
+    .term-details {
+        background-color: #f8f9fa;
+    }
+    .current-term {
+        background-color: #fff3cd !important;
     }
 </style>
 {% endblock %}
@@ -62,10 +87,17 @@
 
     <div class="card">
         <div class="card-header">
-            Students with Outstanding Balances - {{ current_datetime.strftime('%Y-%m-%d') }}
+            <h5 class="mb-0">
+                Students with Outstanding Balances - {{ current_datetime.strftime('%Y-%m-%d %H:%M') }}
+                <span class="float-end no-print">
+                    <small class="text-muted">Total Outstanding: 
+                        <strong class="text-danger">{{ "KSh{:,.2f}".format(total_outstanding) }}</strong>
+                    </small>
+                </span>
+            </h5>
         </div>
         <div class="card-body">
-            {% if report_data %}
+            {% if student_balances %}
             <div class="table-responsive">
                 <table class="table table-hover">
                     <thead>
@@ -73,42 +105,62 @@
                             <th>#</th>
                             <th>Student</th>
                             <th>Admission No</th>
-                            <th>Total Due</th>
-                            <th>Total Paid</th>
-                            <th>Balance</th>
+                            <th>Total Balance</th>
+                            <th class="no-print">Details</th>
                             <th class="no-print">Receipt</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for student in report_data %}
+                        {% for student_id, data in student_balances.items() %}
                         <tr>
                             <td>{{ loop.index }}</td>
-                            <td>{{ student.name }}</td>
-                            <td>{{ student.admission_no }}</td>
-                            <td>{{ "KSh{:,.2f}".format(student.total_due) }}</td>
-                            <td>{{ "KSh{:,.2f}".format(student.total_paid) }}</td>
-                            <td class="{% if student.balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                                <strong>{{ "KSh{:,.2f}".format(student.balance) }}</strong>
+                            <td>{{ data.name }}</td>
+                            <td>{{ data.admission_no }}</td>
+                            <td class="{% if data.total_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                                <strong>{{ "KSh{:,.2f}".format(data.total_balance) }}</strong>
                             </td>
                             <td class="no-print">
-                                <a href="{{ url_for('outstanding_balance_receipt', student_id=student.id) }}" 
+                                <button class="btn btn-sm btn-info term-toggle" 
+                                        data-student="{{ student_id }}">
+                                    <i class="bi bi-list"></i> Terms
+                                </button>
+                            </td>
+                            <td class="no-print">
+                                <a href="{{ url_for('outstanding_balance_receipt', student_id=student_id) }}" 
                                    class="btn btn-sm btn-outline-primary receipt-link"
                                    target="_blank">
                                    <i class="bi bi-receipt"></i> Print
                                 </a>
                             </td>
                         </tr>
+                        <tr class="term-details" id="details-{{ student_id }}" style="display:none;">
+                            <td colspan="6" class="p-0">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Term</th>
+                                            <th>Fee</th>
+                                            <th>Paid</th>
+                                            <th>Balance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for term in data.terms %}
+                                        <tr class="{% if term.term_id == current_term_id %}current-term{% endif %}">
+                                            <td>{{ term.term_name }}</td>
+                                            <td>{{ "KSh{:,.2f}".format(term.term_fee) }}</td>
+                                            <td>{{ "KSh{:,.2f}".format(term.term_paid) }}</td>
+                                            <td class="{% if term.term_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                                                {{ "KSh{:,.2f}".format(term.term_balance) }}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
                         {% endfor %}
                     </tbody>
-                    <tfoot>
-                        <tr class="table-light">
-                            <th colspan="5">Total Outstanding</th>
-                            <th class="text-danger">
-                                <strong>{{ "KSh{:,.2f}".format(report_data|sum(attribute='balance')) }}</strong>
-                            </th>
-                            <th class="no-print"></th>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
             {% else %}
@@ -133,6 +185,22 @@
 </div>
 
 <script>
-    // Auto-print when individual receipt opens (handled in receipt template)
+// Toggle term details visibility
+document.querySelectorAll('.term-toggle').forEach(button => {
+    button.addEventListener('click', function() {
+        const detailsDiv = document.getElementById(`details-${this.dataset.student}`);
+        detailsDiv.style.display = detailsDiv.style.display === 'none' ? 'table-row' : 'none';
+        this.innerHTML = detailsDiv.style.display === 'none' 
+            ? '<i class="bi bi-list"></i> Terms' 
+            : '<i class="bi bi-x-circle"></i> Hide';
+    });
+});
+
+// Auto-expand if printing
+window.onbeforeprint = function() {
+    document.querySelectorAll('.term-details').forEach(el => {
+        el.style.display = 'table-row';
+    });
+};
 </script>
 {% endblock %}
