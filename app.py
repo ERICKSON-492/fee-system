@@ -63,7 +63,7 @@ def init_db_pool():
 
 def get_logo_base64():
     try:
-        logo_path = os.path.join(app.static_folder, 'images', 'logo.jpg')
+        logo_path = os.path.join(app.static_folder, 'images', 'LOGO.jpg')
         with open(logo_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
     except Exception as e:
