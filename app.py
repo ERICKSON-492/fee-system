@@ -512,9 +512,7 @@ def view_payments():
         logger.error(f"Error in view_payments: {str(e)}")
         flash('Error retrieving payment records', 'danger')
         return redirect(url_for('dashboard'))
-from decimal import Decimal, InvalidOperation
-from flask import request, render_template, redirect, url_for, flash
-from flask_login import login_required
+
 
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
