@@ -512,81 +512,57 @@ def view_payments():
         logger.error(f"Error in view_payments: {str(e)}")
         flash('Error retrieving payment records', 'danger')
         return redirect(url_for('dashboard'))
-@app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
+from decimal import Decimal, InvalidOperation
+from flask import request, render_template, redirect, url_for, flash
+from flask_login import login_required
+
+@app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
-def edit_payment(id):
+def add_payment():
+    if request.method == 'POST':
+        student_id = request.form['student_id'].strip()
+        term_id = request.form['term_id'].strip()
+        amount_paid = request.form['amount_paid'].strip()
+        payment_date = request.form['payment_date'].strip()
+
+        try:
+            amount_paid = Decimal(amount_paid)
+            if amount_paid <= 0:
+                flash('Amount must be positive', 'danger')
+                return redirect(url_for('add_payment'))
+
+            with get_db_cursor(commit=True) as cur:
+                cur.execute('''
+                    INSERT INTO payments (student_id, term_id, amount_paid, payment_date, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ''', (student_id, term_id, amount_paid, payment_date))
+
+                # Recalculate balance for student
+                calculate_student_balance(student_id)
+
+                flash('Payment added successfully!', 'success')
+                return redirect(url_for('view_payments'))
+
+        except (ValueError, InvalidOperation):
+            flash('Amount must be a valid number', 'danger')
+        except Exception as e:
+            logger.error(f"Error in add_payment: {str(e)}")
+            flash(f'Error adding payment: {str(e)}', 'danger')
+
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Fetch existing payment data
-            cur.execute('''
-                SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date,
-                       s.name AS student_name, s.admission_no,
-                       t.name AS term_name
-                FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
-                WHERE p.id = %s
-            ''', (id,))
-            payment = cur.fetchone()
-
-            # Get all students and terms for dropdowns
             cur.execute('SELECT id, name FROM students ORDER BY name')
             students = cur.fetchall()
 
             cur.execute('SELECT id, name FROM terms ORDER BY name')
             terms = cur.fetchall()
+
     except Exception as e:
-        logger.error(f"Error retrieving payment: {str(e)}")
-        flash('Error retrieving payment information.', 'danger')
+        logger.error(f"Error retrieving students or terms: {str(e)}")
+        flash('Error loading form data', 'danger')
         return redirect(url_for('view_payments'))
 
-    if not payment:
-        flash('Payment not found.', 'danger')
-        return redirect(url_for('view_payments'))
-
-    if request.method == 'POST':
-        student_id = request.form.get('student_id', '').strip()
-        term_id = request.form.get('term_id', '').strip()
-        amount_paid = request.form.get('amount_paid', '').strip()
-        payment_date = request.form.get('payment_date', '').strip()
-
-        # Validation
-        if not all([student_id, term_id, amount_paid, payment_date]):
-            flash('All fields are required.', 'danger')
-            return redirect(url_for('edit_payment', id=id))
-
-        try:
-            amount_paid = Decimal(amount_paid)
-            if amount_paid <= 0:
-                flash('Amount must be a positive number.', 'danger')
-                return redirect(url_for('edit_payment', id=id))
-        except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number.', 'danger')
-            return redirect(url_for('edit_payment', id=id))
-
-        try:
-            with get_db_cursor(commit=True) as cur:
-                cur.execute('''
-                    UPDATE payments 
-                    SET student_id = %s, term_id = %s, 
-                        amount_paid = %s, payment_date = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                ''', (student_id, term_id, amount_paid, payment_date, id))
-
-            calculate_student_balance(student_id)
-            flash('Payment updated successfully!', 'success')
-            return redirect(url_for('view_payments'))
-
-        except Exception as e:
-            logger.error(f"Error updating payment: {str(e)}", exc_info=True)
-            flash('An error occurred while updating the payment.', 'danger')
-            return redirect(url_for('edit_payment', id=id))
-
-    return render_template('edit_payment.html',
-                           payment=payment,
-                           students=students,
-                           terms=terms)
+    return render_template('add_payment.html', students=students, terms=terms)
 
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
