@@ -692,10 +692,9 @@ def delete_payment(id):
     
     return redirect(url_for('view_payments'))
 
-@app.route('/receipt/<payment_id>', defaults={'payment_id': None})
+@app.route('/receipt/<int:payment_id>')
 def view_receipt(payment_id):
-    # your code
-
+    """View payment receipt with detailed information"""
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             # Get payment details with student and term information
@@ -780,7 +779,6 @@ def view_receipt(payment_id):
         logger.error(f"Error in view_receipt: {str(e)}", exc_info=True)
         flash('Error generating receipt', 'danger')
         return redirect(url_for('view_payments'))
-
 @app.route('/outstanding')
 @login_required
 def outstanding_balances():
