@@ -672,8 +672,10 @@ def add_payment():
     return render_template('add_payment.html', 
                          students=students, 
                          terms=terms,
-                         default_date=datetime.now().strftime('%Y-%m-%d'))
+                         default_date=datetime.now().strftime('%Y-%m-%d'),
                          datetime=datetime)
+
+
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
