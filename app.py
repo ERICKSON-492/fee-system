@@ -585,7 +585,7 @@ def view_payments():
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
-    # Get terms for dropdown (always needed for both GET and POST)
+    # Get terms for dropdown
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
@@ -596,7 +596,7 @@ def add_payment():
         return redirect(url_for('view_payments'))
 
     if request.method == 'POST':
-        student_identifier = request.form.get('student_identifier')
+        student_identifier = request.form.get('student_identifier', '').strip()
         term_id = request.form.get('term_id')
         amount_paid = request.form.get('amount_paid')
         payment_date = request.form.get('payment_date')
@@ -624,29 +624,35 @@ def add_payment():
                                     default_date=datetime.now().strftime('%Y-%m-%d'))
             
             with get_db_cursor(commit=True) as cur:
-                # Find student by admission no or name
+                # Find student by admission no or name (using DictCursor)
                 cur.execute('''
                     SELECT id, name, admission_no FROM students 
                     WHERE admission_no = %s OR name ILIKE %s
+                    ORDER BY 
+                        CASE WHEN admission_no = %s THEN 0 ELSE 1 END,
+                        name
                     LIMIT 1
-                ''', (student_identifier, f'%{student_identifier}%'))
+                ''', (student_identifier, f'%{student_identifier}%', student_identifier))
                 student = cur.fetchone()
                 
                 if not student:
-                    flash('Student not found', 'danger')
+                    flash(f'Student not found: {student_identifier}', 'danger')
                     return render_template('add_payment.html', 
                                         terms=terms,
-                                        default_date=datetime.now().strftime('%Y-%m-%d'))
+                                        default_date=datetime.now().strftime('%Y-%m-%d'),
+                                        form_data=request.form)
                 
-                student_id = student['id']
-                
+                student_id = student['id']  # Accessing as dictionary
+
                 # Validate term exists
-                cur.execute('SELECT 1 FROM terms WHERE id = %s', (term_id,))
-                if not cur.fetchone():
+                cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
+                term = cur.fetchone()
+                if not term:
                     flash('Invalid term selected', 'danger')
                     return render_template('add_payment.html', 
                                         terms=terms,
-                                        default_date=datetime.now().strftime('%Y-%m-%d'))
+                                        default_date=datetime.now().strftime('%Y-%m-%d'),
+                                        form_data=request.form)
                 
                 # Generate receipt number
                 receipt_number = generate_receipt_number()
@@ -656,19 +662,33 @@ def add_payment():
                     INSERT INTO payments 
                     (student_id, term_id, amount_paid, payment_date, receipt_number)
                     VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+                
+                payment_id = cur.fetchone()['id']
                 
                 # Update student balance
                 calculate_student_balance(student_id)
                 
-                flash(f'Payment added successfully for {student["name"]} ({student["admission_no"]})!', 'success')
-                return redirect(url_for('view_payments'))
+                flash(f'Payment of KSh {amount_paid:,.2f} recorded for {student["name"]} ({student["admission_no"]})', 'success')
+                return redirect(url_for('view_receipt', payment_id=payment_id))
                 
-        except ValueError:
+        except ValueError as e:
+            logger.error(f"Value error in payment: {str(e)}")
             flash('Invalid date or amount format', 'danger')
+            return render_template('add_payment.html', 
+                                terms=terms,
+                                default_date=datetime.now().strftime('%Y-%m-%d'),
+                                form_data=request.form)
         except Exception as e:
-            logger.error(f"Error adding payment: {str(e)}")
-            flash('Error adding payment', 'danger')
+            logger.error(f"Error adding payment: {str(e)}", exc_info=True)
+            flash(f'Error adding payment: {str(e)}', 'danger')
+            return render_template('add_payment.html', 
+                                terms=terms,
+                                default_date=datetime.now().strftime('%Y-%m-%d'),
+                                form_data=request.form)
+    
+
     
     
     
