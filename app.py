@@ -325,8 +325,7 @@ def edit_student(id):
         try:
             with get_db_cursor() as cur:
                 cur.execute(
-              print(f"Error in edit_term: {str(e)}")
-         'UPDATE students SET name = %s, form = %s WHERE id = %s',
+                    'UPDATE students SET name = %s, form = %s WHERE id = %s',
                     (name, form, id)
                 )
                 flash('Student updated successfully!', 'success')
@@ -349,7 +348,6 @@ def edit_student(id):
         return redirect(url_for('view_students'))
     
     return render_template('edit_student.html', student=student)
-
 @app.route('/student/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_student(id):
