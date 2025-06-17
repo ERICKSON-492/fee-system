@@ -703,56 +703,68 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
 
-            # Convert to Decimal for precise calculations
-            term_amount = Decimal(str(payment['term_amount']))
-            amount_paid = Decimal(str(payment['amount_paid']))
+            # Convert to Decimal with proper null handling
+            term_amount = Decimal(str(payment.get('term_amount', 0)))
+            amount_paid = Decimal(str(payment.get('amount_paid', 0)))
             
-            # Calculate total payments for this term
+            # Safely get payment date
+            payment_date = payment.get('payment_date')
+            if payment_date:
+                formatted_date = payment_date.strftime('%d/%m/%Y')
+            else:
+                formatted_date = 'N/A'
+            
+            # Calculate total payments for this term with null handling
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0)
+                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
                 FROM payments
                 WHERE student_id = %s AND term_id = %s
-            ''', (payment['student_id'], payment['term_id']))
-            term_total_paid = Decimal(str(cur.fetchone()[0]))
+            ''', (payment.get('student_id'), payment.get('term_id')))
+            term_total_paid = Decimal(str(cur.fetchone().get('total_paid', 0)))
             
-            # Calculate balance for this specific term
+            # Calculate balances with proper null handling
             term_balance = term_amount - term_total_paid
             
-            # Calculate cumulative balance across all terms
+            # Calculate cumulative balance with proper null handling
             cur.execute('''
                 SELECT 
-                    SUM(t.amount) AS total_due,
+                    COALESCE(SUM(t.amount), 0) AS total_due,
                     COALESCE(SUM(p.amount_paid), 0) AS total_paid
                 FROM students s
                 CROSS JOIN terms t
                 LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
                 WHERE s.id = %s
                 GROUP BY s.id
-            ''', (payment['student_id'],))
+            ''', (payment.get('student_id'),))
             result = cur.fetchone()
             
+            cumulative_balance = Decimal('0')
             if result:
-                cumulative_balance = Decimal(str(result['total_paid'])) - Decimal(str(result['total_due']))
-            else:
-                cumulative_balance = Decimal('0')
+                total_due = Decimal(str(result.get('total_due', 0)))
+                total_paid = Decimal(str(result.get('total_paid', 0)))
+                cumulative_balance = total_paid - total_due
             
-            # Generate QR code
+            # Generate QR code with all null checks
             qr_data = f"""
-            Receipt: {payment['receipt_number']}
-            Student: {payment['student_name']} ({payment['admission_no']})
+            Receipt: {payment.get('receipt_number', 'N/A')}
+            Student: {payment.get('student_name', 'N/A')} ({payment.get('admission_no', 'N/A')})
             Amount Paid: {float(amount_paid):.2f}
-            Term: {payment['term_name']}
+            Term: {payment.get('term_name', 'N/A')}
             Term Balance: {"-" if term_balance > 0 else ""}{float(abs(term_balance)):.2f}
             Cumulative Balance: {"+" if cumulative_balance > 0 else ""}{float(abs(cumulative_balance)):.2f}
-            Date: {payment['payment_date']}
+            Date: {formatted_date}
             """
             
-            qr_img = qrcode.make(qr_data)
-            qr_buffer = BytesIO()
-            qr_img.save(qr_buffer, format="PNG")
-            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+            try:
+                qr_img = qrcode.make(qr_data)
+                qr_buffer = BytesIO()
+                qr_img.save(qr_buffer, format="PNG")
+                qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+            except Exception as qr_error:
+                app.logger.error(f"QR generation error: {str(qr_error)}")
+                qr_b64 = None
             
-            logo_base64 = get_logo_base64()
+            logo_base64 = get_logo_base64() or None
             
             return render_template('receipt.html',
                                 payment=payment,
@@ -762,11 +774,12 @@ def view_receipt(payment_id):
                                 cumulative_balance=float(cumulative_balance),
                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                 qr_code=qr_b64,
-                                logo_base64=logo_base64)
+                                logo_base64=logo_base64,
+                                formatted_date=formatted_date)
             
     except Exception as e:
         flash('Error generating receipt', 'danger')
-        app.logger.error(f"Error in view_receipt: {str(e)}")
+        app.logger.error(f"Error in view_receipt: {str(e)}", exc_info=True)
         return redirect(url_for('view_payments'))    
 @app.route('/reports/outstanding')
 @login_required
