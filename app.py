@@ -465,115 +465,91 @@ def view_payments():
     except Exception as e:
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
-        return redirect(url_for('dashboard'))
-@app.route('/payment/add', methods=['GET', 'POST'])
+        return redirect(url_for('dashboard')
+ @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
+    today = datetime.now().date().isoformat()
+    
     if request.method == 'POST':
         try:
-            # Get input method first
+            # Get input method
             input_method = request.form.get('student_input_method', 'select')
             
-            # Get admission number based on selected method
+            # Get admission number
+            admission_no = ''
             if input_method == 'manual':
                 admission_no = request.form.get('manual_admission', '').strip().upper()
                 if not admission_no:
                     flash('Please enter an admission number', 'danger')
-                    return redirect(url_for('add_payment'))
+                    return render_template('add_payment.html',
+                                        students=get_students(),
+                                        terms=get_terms(),
+                                        today=today,
+                                        form_data=request.form)
             else:
                 admission_no = request.form.get('admission_no', '').strip().upper()
                 if not admission_no:
                     flash('Please select a student', 'danger')
-                    return redirect(url_for('add_payment'))
+                    return render_template('add_payment.html',
+                                        students=get_students(),
+                                        terms=get_terms(),
+                                        today=today,
+                                        form_data=request.form)
 
-            # Get other form data
-            term_id = request.form.get('term_id', '').strip()
-            amount_paid = request.form.get('amount_paid', '').strip()
-            payment_date = request.form.get('payment_date', '').strip()
+            # Validate other fields
+            term_id = request.form.get('term_id')
+            amount_paid = request.form.get('amount_paid')
+            payment_date = request.form.get('payment_date', today)
             
-            # Validate required fields
             if not all([term_id, amount_paid, payment_date]):
                 flash('All fields are required', 'danger')
-                return redirect(url_for('add_payment'))
+                return render_template('add_payment.html',
+                                    students=get_students(),
+                                    terms=get_terms(),
+                                    today=today,
+                                    form_data=request.form)
             
-            # Validate amount
             try:
                 amount_paid = float(amount_paid)
                 if amount_paid <= 0:
                     flash('Amount must be greater than zero', 'danger')
-                    return redirect(url_for('add_payment'))
+                    return render_template('add_payment.html',
+                                        students=get_students(),
+                                        terms=get_terms(),
+                                        today=today,
+                                        form_data=request.form)
             except ValueError:
                 flash('Please enter a valid amount', 'danger')
-                return redirect(url_for('add_payment'))
+                return render_template('add_payment.html',
+                                    students=get_students(),
+                                    terms=get_terms(),
+                                    today=today,
+                                    form_data=request.form)
             
-            # Generate secure receipt number
-            receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
+            # Process payment (your existing payment processing code)
+            # ...
             
-            with get_db_cursor(commit=True) as cur:
-                # Verify student exists
-                cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
-                student = cur.fetchone()
-                
-                if not student:
-                    flash(f'Student {admission_no} not found. Please add the student first.', 'danger')
-                    return redirect(url_for('add_student', admission_no=admission_no))
-                
-                student_id = student[0]
-                
-                # Verify term exists
-                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
-                term = cur.fetchone()
-                if not term:
-                    flash('Invalid term selected', 'danger')
-                    return redirect(url_for('add_payment'))
-                
-                term_id, term_amount = term
-                
-                # Record payment
-                cur.execute('''
-                    INSERT INTO payments 
-                    (student_id, term_id, amount_paid, payment_date, receipt_number)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-                
-                payment_id = cur.fetchone()[0]
-                
-                # Calculate balance
-                cur.execute('''
-                    SELECT COALESCE(SUM(amount_paid), 0)::float
-                    FROM payments
-                    WHERE student_id = %s AND term_id = %s
-                ''', (student_id, term_id))
-                total_paid = float(cur.fetchone()[0])
-                balance = term_amount - total_paid
-                
-                flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
-                return redirect(url_for('view_receipt', payment_id=payment_id))
-                
         except Exception as e:
-            flash('An error occurred while processing your payment', 'danger')
-            app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
-            return redirect(url_for('add_payment'))
+            flash(f'An error occurred: {str(e)}', 'danger')
+            app.logger.error(f"Payment error: {str(e)}", exc_info=True)
     
-    # GET request - show the form
-    try:
-        with get_db_cursor() as cur:
-            cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
-            students = cur.fetchall()
-            
-            cur.execute("SELECT id, name FROM terms ORDER BY name")
-            terms = cur.fetchall()
-            
-        return render_template('add_payment.html',
-                            students=students,
-                            terms=terms,
-                            today=datetime.now().date())
-        
-    except Exception as e:
-        flash('Error loading payment form', 'danger')
-        app.logger.error(f"Form loading error: {str(e)}")
-        return redirect(url_for('view_payments'))        
+    # GET request or error case
+    return render_template('add_payment.html',
+                        students=get_students(),
+                        terms=get_terms(),
+                        today=today,
+                        form_data=request.form if request.method == 'POST' else None)
+
+def get_students():
+    with get_db_cursor() as cur:
+        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+        return cur.fetchall()
+
+def get_terms():
+    with get_db_cursor() as cur:
+        cur.execute("SELECT id, name FROM terms ORDER BY name")
+        return cur.fetchall()                       
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
