@@ -692,9 +692,10 @@ def delete_payment(id):
     
     return redirect(url_for('view_payments'))
 
-@app.route('/receipt/<int:payment_id>')
-@login_required
+@app.route('/receipt/<payment_id>', defaults={'payment_id': None})
 def view_receipt(payment_id):
+    # your code
+
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             # Get payment details with student and term information
