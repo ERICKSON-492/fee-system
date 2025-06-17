@@ -421,49 +421,46 @@ def delete_term(id):
 @app.route('/payments')
 @login_required
 def view_payments():
-    # Get search query if exists
     search = request.args.get('search', '').strip()
     
-    # Base query for payments
-    query = '''
-        SELECT p.id, p.receipt_number, p.amount_paid, p.payment_date,
-               s.id as student_id, s.name as student_name, s.admission_no,
-               t.id as term_id, t.name as term_name
-        FROM payments p
-        JOIN students s ON p.student_id = s.id
-        JOIN terms t ON p.term_id = t.id
-    '''
-
-    # Add search filter if provided
-    if search:
-        query += " WHERE s.admission_no ILIKE %s OR s.name ILIKE %s OR p.receipt_number ILIKE %s"
-        params = [f'%{search}%', f'%{search}%', f'%{search}%']
-    else:
-        params = []
-
-    # Add sorting
-    query += " ORDER BY p.payment_date DESC"
-
     try:
-        with get_db_cursor() as cur:
-            # Get all payment records
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Base query
+            query = '''
+                SELECT p.id, p.receipt_number, p.amount_paid, p.payment_date,
+                       s.id as student_id, s.name as student_name, s.admission_no,
+                       t.id as term_id, t.name as term_name
+                FROM payments p
+                JOIN students s ON p.student_id = s.id
+                JOIN terms t ON p.term_id = t.id
+            '''
+            
+            params = []
+            if search:
+                query += " WHERE s.admission_no ILIKE %s OR s.name ILIKE %s OR p.receipt_number ILIKE %s"
+                params = [f'%{search}%', f'%{search}%', f'%{search}%']
+            
+            query += " ORDER BY p.payment_date DESC"
             cur.execute(query, params)
             payments = cur.fetchall()
-
-            # Get all students for dropdown
+            
+            # Convert None amounts to 0 and ensure float type
+            for payment in payments:
+                payment['amount_paid'] = float(payment['amount_paid']) if payment['amount_paid'] is not None else 0.0
+            
+            # Get students and terms for dropdowns
             cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
             students = cur.fetchall()
-
-            # Get all terms for dropdown
+            
             cur.execute("SELECT id, name FROM terms ORDER BY name")
             terms = cur.fetchall()
-
+            
         return render_template('payments.html',
                             payments=payments,
                             students=students,
                             terms=terms,
                             search=search)
-
+            
     except Exception as e:
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
