@@ -124,28 +124,21 @@ def init_db():
             )
         ''')
         
-        # Create terms table
+        
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS terms (
-                id SERIAL PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL,
+            CREATE TABLE IF NOT EXISTS payment_allocations (
+                payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
                 amount DECIMAL(10,2) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                PRIMARY KEY (payment_id, term_id)
             )
         ''')
         
-        # Create payments table
+        # Create term application order table
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS payments (
-                id SERIAL PRIMARY KEY,
-                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-                term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
-                amount_paid DECIMAL(10,2) NOT NULL,
-                payment_date DATE NOT NULL,
-                receipt_number TEXT UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS term_application_order (
+                term_id INTEGER PRIMARY KEY REFERENCES terms(id) ON DELETE CASCADE,
+                application_order INTEGER NOT NULL
             )
         ''')
         
@@ -185,30 +178,56 @@ def init_db():
                         ('admin', hashed_password))
 
 def calculate_student_balance(student_id):
-    """Calculate and update a student's balance"""
+    """Calculate balances with carry-over support"""
     with get_db_cursor(commit=True) as cur:
-        # Get total fees due
-        cur.execute('SELECT COALESCE(SUM(amount), 0) FROM terms')
-        total_fees = cur.fetchone()[0] or Decimal('0')
+        # Get all terms
+        cur.execute('''
+            SELECT t.id, t.amount, COALESCE(tao.application_order, 999) as app_order
+            FROM terms t
+            LEFT JOIN term_application_order tao ON t.id = tao.term_id
+            ORDER BY app_order, t.id
+        ''')
+        terms = cur.fetchall()
         
-        # Get total payments made
-        cur.execute('SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = %s', (student_id,))
-        total_paid = cur.fetchone()[0] or Decimal('0')
+        total_balance = Decimal('0')
         
-        # Calculate balance
-        balance = total_fees - total_paid
+        # Clear and recalculate term balances
+        cur.execute('DELETE FROM term_balances WHERE student_id = %s', (student_id,))
         
-        # Update balance record
+        for term in terms:
+            term_id = term['id']
+            term_amount = term['amount']
+            
+            # Get total allocated to this term
+            cur.execute('''
+                SELECT COALESCE(SUM(amount), 0) as allocated
+                FROM payment_allocations pa
+                JOIN payments p ON pa.payment_id = p.id
+                WHERE p.student_id = %s AND pa.term_id = %s
+            ''', (student_id, term_id))
+            allocated = cur.fetchone()['allocated'] or Decimal('0')
+            
+            term_balance = term_amount - allocated
+            
+            # Store term balance
+            cur.execute('''
+                INSERT INTO term_balances
+                (student_id, term_id, balance)
+                VALUES (%s, %s, %s)
+            ''', (student_id, term_id, term_balance))
+            
+            total_balance += term_balance
+        
+        # Update overall balance
         cur.execute('''
             INSERT INTO student_balances (student_id, current_balance)
             VALUES (%s, %s)
             ON CONFLICT (student_id) DO UPDATE
             SET current_balance = EXCLUDED.current_balance,
                 updated_at = CURRENT_TIMESTAMP
-        ''', (student_id, balance))
+        ''', (student_id, total_balance))
         
-        return balance
-
+        return total_balance
 def generate_receipt_number():
     """Generate a unique receipt number"""
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -829,26 +848,22 @@ def delete_payment(id):
 
 @app.route('/receipt/<int:payment_id>')
 def view_receipt(payment_id):
-    """View payment receipt with detailed information"""
+    """View payment receipt with detailed allocation information"""
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get payment details with student and term information
+            # Get payment details with student information
             cur.execute('''
                 SELECT 
                     p.id, 
                     p.student_id, 
-                    p.term_id, 
                     p.amount_paid, 
                     p.payment_date, 
                     p.receipt_number,
                     s.name AS student_name, 
                     s.admission_no, 
-                    s.form,
-                    t.name AS term_name, 
-                    t.amount AS term_amount
+                    s.form
                 FROM payments p
                 JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
                 WHERE p.id = %s
             ''', (payment_id,))
             payment = cur.fetchone()
@@ -857,17 +872,37 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
 
-            # Get term total paid
+            # Get payment allocations across terms
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
-                FROM payments
-                WHERE student_id = %s AND term_id = %s
-            ''', (payment['student_id'], payment['term_id']))
-            term_total_paid = Decimal(str(cur.fetchone()['total_paid']))
-            
-            # Calculate term balance
-            term_balance = Decimal(str(payment['term_amount'])) - term_total_paid
-            
+                SELECT 
+                    pa.term_id,
+                    t.name AS term_name,
+                    t.amount AS term_amount,
+                    pa.amount AS allocated_amount,
+                    (SELECT COALESCE(SUM(pa2.amount), 0) 
+                     FROM payment_allocations pa2 
+                     JOIN payments p2 ON pa2.payment_id = p2.id 
+                     WHERE p2.student_id = %s AND pa2.term_id = pa.term_id
+                     AND p2.id <= %s) AS running_total
+                FROM payment_allocations pa
+                JOIN terms t ON pa.term_id = t.id
+                WHERE pa.payment_id = %s
+                ORDER BY t.id
+            ''', (payment['student_id'], payment_id, payment_id))
+            allocations = cur.fetchall()
+
+            # Calculate term balances after this payment
+            term_balances = []
+            for alloc in allocations:
+                term_balance = alloc['term_amount'] - alloc['running_total']
+                term_balances.append({
+                    'term_name': alloc['term_name'],
+                    'allocated': float(alloc['allocated_amount']),
+                    'running_total': float(alloc['running_total']),
+                    'balance': float(term_balance),
+                    'is_paid': term_balance <= 0
+                })
+
             # Get cumulative balance
             cur.execute('''
                 SELECT current_balance 
@@ -875,20 +910,24 @@ def view_receipt(payment_id):
                 WHERE student_id = %s
             ''', (payment['student_id'],))
             balance_row = cur.fetchone()
-            cumulative_balance = Decimal(str(balance_row['current_balance'])) if balance_row else Decimal('0')
+            cumulative_balance = float(balance_row['current_balance']) if balance_row else 0.0
             
             # Format dates
             payment_date = payment['payment_date'].strftime('%d/%m/%Y')
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # Generate QR code
+            # Generate QR code with allocation details
+            allocation_details = "\n".join(
+                f"{alloc['term_name']}: {alloc['allocated']:.2f}" 
+                for alloc in term_balances
+            )
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
-            Amount Paid: {float(payment['amount_paid']):.2f}
-            Term: {payment['term_name']}
-            Term Balance: {"-" if term_balance > 0 else ""}{float(abs(term_balance)):.2f}
-            Cumulative Balance: {"+" if cumulative_balance > 0 else ""}{float(abs(cumulative_balance)):.2f}
+            Total Paid: {float(payment['amount_paid']):.2f}
+            Allocation:
+            {allocation_details}
+            Cumulative Balance: {"+" if cumulative_balance > 0 else ""}{abs(cumulative_balance):.2f}
             Date: {payment_date}
             """
             
@@ -902,9 +941,8 @@ def view_receipt(payment_id):
             return render_template('receipt.html',
                                 payment=payment,
                                 amount_paid=float(payment['amount_paid']),
-                                term_total_paid=float(term_total_paid),
-                                term_balance=float(term_balance),
-                                cumulative_balance=float(cumulative_balance),
+                                allocations=term_balances,
+                                cumulative_balance=cumulative_balance,
                                 current_time=current_time,
                                 qr_code=qr_b64,
                                 logo_base64=logo_base64,
