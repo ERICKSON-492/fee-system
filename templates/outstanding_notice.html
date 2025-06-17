@@ -1,88 +1,80 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="container">
-    <h2>Outstanding Balances</h2>
-    
-    <div class="summary-card mb-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <h5>Total Students</h5>
-                        <p class="display-4">{{ stats.total_students }}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <h5>Total Outstanding</h5>
-                        <p class="display-4">KSh {{ "%.2f"|format(stats.total_outstanding) }}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <h5>Active Notices</h5>
-                        <p class="display-4">{{ stats.total_active_notices }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+{% block title %}Outstanding Notice #{{ notice.reference_number }}{% endblock %}
 
-    <div class="card">
-        <div class="card-header">
-            <div class="row">
-                <div class="col-md-6">
-                    <h4>Students with Outstanding Balances</h4>
-                </div>
-                <div class="col-md-6 text-right">
-                    <span class="badge badge-secondary">As of {{ current_date.strftime('%d/%m/%Y') }}</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card-body">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Admission No</th>
-                        <th>Student Name</th>
-                        <th>Form</th>
-                        <th>Balance</th>
-                        <th>Notices</th>
-                        <th>Latest Due Date</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for student in students %}
-                    <tr>
-                        <td>{{ student.admission_no }}</td>
-                        <td>{{ student.name }}</td>
-                        <td>{{ student.form }}</td>
-                        <td class="text-danger font-weight-bold">KSh {{ "%.2f"|format(student.balance) }}</td>
-                        <td>{{ student.notices_count }}</td>
-                        <td>
-                            {% if student.latest_due_date %}
-                                {{ student.latest_due_date.strftime('%d/%m/%Y') }}
-                                {% if student.latest_due_date < current_date %}
-                                    <span class="badge badge-danger">Overdue</span>
-                                {% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="{{ url_for('student_outstanding_details', student_id=student.id) }}" 
-                               class="btn btn-sm btn-primary">
-                                View Details
-                            </a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="7" class="text-center">No students with outstanding balances</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+{% block extra_css %}
+<style>
+    .notice-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        border: 1px solid #ddd;
+        background-color: white;
+    }
+    .notice-header {
+        text-align: center;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #333;
+        padding-bottom: 10px;
+    }
+    .notice-logo {
+        max-height: 80px;
+        margin-bottom: 10px;
+    }
+    .notice-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #dc3545;
+    }
+    .notice-details {
+        margin-bottom: 30px;
+    }
+    .notice-table {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    .notice-table th {
+        text-align: left;
+        padding: 5px;
+        background-color: #f8f9fa;
+    }
+    .notice-table td {
+        padding: 5px;
+        border-bottom: 1px solid #ddd;
+    }
+    .notice-footer {
+        margin-top: 30px;
+        text-align: center;
+        font-size: 12px;
+        color: #666;
+    }
+    .qr-code {
+        width: 100px;
+        height: 100px;
+        margin: 0 auto;
+        display: block;
+    }
+    .signature-line {
+        border-top: 1px solid #333;
+        width: 200px;
+        margin: 30px auto 0;
+        text-align: center;
+        padding-top: 5px;
+    }
+    .status-badge {
+        font-size: 16px;
+        padding: 5px 10px;
+    }
+    .overdue {
+        color: #dc3545;
+        font-weight: bold;
+    }
+</style>
 {% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-file-invoice"></i> Outstanding Notice #{{ notice.reference_number }}</h2>
+        <div>
+            <a href="{{ url_for('student_outstanding_details', student_id=notice.student_id) }}" class
