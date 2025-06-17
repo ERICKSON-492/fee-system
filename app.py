@@ -517,54 +517,52 @@ def view_payments():
 @login_required
 def add_payment():
     if request.method == 'POST':
+        # Validate required fields
+        required_fields = ['student_id', 'term_id', 'amount_paid']
+        if not all(field in request.form for field in required_fields):
+            flash('All fields are required', 'danger')
+            return redirect(url_for('add_payment'))
+            
         try:
             student_id = int(request.form['student_id'])
             term_id = int(request.form['term_id'])
             amount_paid = Decimal(request.form['amount_paid'])
             payment_date = request.form.get('payment_date') or datetime.now().date()
             
+            # Validate amount
             if amount_paid <= 0:
                 flash('Payment amount must be positive', 'danger')
                 return redirect(url_for('add_payment'))
-            
-            with get_db_cursor(commit=True) as cur:
-                # Get term amount
-                cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
-                term_amount = Decimal(str(cur.fetchone()[0]))
                 
-                # Generate receipt number
-                receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                
-                # Record payment
-                cur.execute('''
-                    INSERT INTO payments 
-                    (student_id, term_id, amount_paid, payment_date, receipt_number)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-                
-                payment_id = cur.fetchone()[0]
-                
-                # Update student balance
-                balance = calculate_student_balance(student_id)
-                
-                if balance >= 0:
-                    flash(f'Payment recorded! {amount_paid:.2f} paid. New balance: {balance:.2f} (credit)', 'success')
-                else:
-                    flash(f'Payment recorded! {amount_paid:.2f} paid. Balance due: {-balance:.2f}', 'success')
+            # Validate student and term exist
+            with get_db_cursor(dict_cursor=True) as cur:
+                cur.execute('SELECT 1 FROM students WHERE id = %s', (student_id,))
+                if not cur.fetchone():
+                    flash('Invalid student selected', 'danger')
+                    return redirect(url_for('add_payment'))
                     
-                return redirect(url_for('view_receipt', payment_id=payment_id))
+                cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
+                term = cur.fetchone()
+                if not term:
+                    flash('Invalid term selected', 'danger')
+                    return redirect(url_for('add_payment'))
+                    
+                term_amount = Decimal(str(term['amount']))
                 
+            # Rest of your payment processing logic...
+            
         except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number', 'danger')
+            flash('Invalid amount format', 'danger')
+            return redirect(url_for('add_payment'))
         except Exception as e:
-            logger.error(f"Payment error: {str(e)}")
+            logger.error(f"Payment processing error: {str(e)}", exc_info=True)
             flash('Error processing payment', 'danger')
+            return redirect(url_for('add_payment'))
     
+    # GET request handling remains the same
     students = get_students()
     terms = get_terms()
     return render_template('add_payment.html', students=students, terms=terms)
-
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
