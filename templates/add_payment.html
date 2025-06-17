@@ -13,7 +13,7 @@
         </div>
         
         <div class="card-body">
-            <!-- Error Messages -->
+            <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -24,14 +24,27 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            
-            <form method="POST">
+
+            <form method="POST" id="paymentForm">
                 <div class="row g-3">
-                    <!-- Student Selection -->
+                    <!-- Student Selection Section -->
+                    <div class="col-12">
+                        <div class="border-bottom pb-2 mb-3">
+                            <h5><i class="bi bi-person-plus me-2"></i>Student Information</h5>
+                        </div>
+                    </div>
+
+                    <!-- Student Selection Options -->
                     <div class="col-md-6">
-                        <label for="student_select" class="form-label">Select Student</label>
-                        <select class="form-select" id="student_select" name="admission_no">
-                            <option value="">Choose from list...</option>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="student_input_method" 
+                                   id="selectStudent" value="select" checked>
+                            <label class="form-check-label" for="selectStudent">
+                                Select Existing Student
+                            </label>
+                        </div>
+                        <select class="form-select mt-2" id="student_select" name="admission_no">
+                            <option value="">Choose student...</option>
                             {% for student in students %}
                             <option value="{{ student.admission_no }}"
                                 {% if request.form.admission_no == student.admission_no %}selected{% endif %}>
@@ -40,16 +53,29 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
-                    <!-- Manual Admission Input -->
+
                     <div class="col-md-6">
-                        <label for="manual_admission" class="form-label">Or Enter Admission No</label>
-                        <input type="text" class="form-control" 
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="student_input_method" 
+                                   id="manualStudent" value="manual">
+                            <label class="form-check-label" for="manualStudent">
+                                Enter New Admission Number
+                            </label>
+                        </div>
+                        <input type="text" class="form-control mt-2" 
                                id="manual_admission" name="manual_admission"
                                value="{{ request.form.manual_admission }}"
-                               placeholder="STD2024-001">
+                               placeholder="e.g., STD2024-001"
+                               disabled>
                     </div>
-                    
+
+                    <!-- Payment Details Section -->
+                    <div class="col-12 mt-4">
+                        <div class="border-bottom pb-2 mb-3">
+                            <h5><i class="bi bi-credit-card me-2"></i>Payment Details</h5>
+                        </div>
+                    </div>
+
                     <!-- Term Selection -->
                     <div class="col-md-6">
                         <label for="term_id" class="form-label">Term</label>
@@ -63,19 +89,19 @@
                             {% endfor %}
                         </select>
                     </div>
-                    
+
                     <!-- Amount -->
                     <div class="col-md-6">
                         <label for="amount_paid" class="form-label">Amount (KSh)</label>
                         <div class="input-group">
                             <span class="input-group-text">KSh</span>
-                            <input type="number" step="0.01" min="0" 
+                            <input type="number" step="0.01" min="0.01" 
                                    class="form-control" 
                                    id="amount_paid" name="amount_paid" 
                                    value="{{ request.form.amount_paid }}" required>
                         </div>
                     </div>
-                    
+
                     <!-- Date -->
                     <div class="col-md-6">
                         <label for="payment_date" class="form-label">Payment Date</label>
@@ -83,11 +109,11 @@
                                id="payment_date" name="payment_date" 
                                value="{{ request.form.payment_date or today }}" required>
                     </div>
-                    
+
                     <!-- Form Actions -->
                     <div class="col-12 mt-4">
                         <button type="submit" class="btn btn-primary px-4">
-                            <i class="bi bi-save me-2"></i>Save Payment
+                            <i class="bi bi-save me-2"></i>Record Payment
                         </button>
                         <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary ms-2">
                             <i class="bi bi-x-circle me-2"></i>Cancel
@@ -101,22 +127,40 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const select = document.getElementById('student_select');
+    const selectMethod = document.querySelector('input[name="student_input_method"]');
+    const selectStudent = document.getElementById('student_select');
     const manualInput = document.getElementById('manual_admission');
     
-    // When manual input is used, clear the dropdown
-    manualInput.addEventListener('input', function() {
-        if (this.value) {
-            select.value = '';
+    // Toggle between input methods
+    selectMethod.addEventListener('change', function() {
+        if (this.value === 'manual') {
+            manualInput.disabled = false;
+            manualInput.required = true;
+            selectStudent.disabled = true;
+            selectStudent.required = false;
+            selectStudent.value = '';
+        } else {
+            manualInput.disabled = true;
+            manualInput.required = false;
+            manualInput.value = '';
+            selectStudent.disabled = false;
+            selectStudent.required = true;
         }
     });
     
-    // When dropdown is used, clear the manual input
-    select.addEventListener('change', function() {
-        if (this.value) {
-            manualInput.value = '';
+    // Form validation
+    document.getElementById('paymentForm').addEventListener('submit', function(e) {
+        if (!selectStudent.value && !manualInput.value) {
+            e.preventDefault();
+            alert('Please either select a student or enter an admission number');
         }
     });
 });
 </script>
+
+<style>
+    .border-bottom {
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+</style>
 {% endblock %}
