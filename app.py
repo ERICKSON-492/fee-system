@@ -585,65 +585,66 @@ def view_payments():
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
-    # Get students and terms for dropdowns
+    # Get terms for dropdown
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT id, name, admission_no FROM students ORDER BY name')
-            students = cur.fetchall()
-            
             cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
             terms = cur.fetchall()
     except Exception as e:
-        logger.error(f"Error loading payment form data: {str(e)}")
+        logger.error(f"Error loading terms: {str(e)}")
         flash('Error loading payment form', 'danger')
         return redirect(url_for('view_payments'))
 
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
+        student_identifier = request.form.get('student_identifier')
         term_id = request.form.get('term_id')
         amount_paid = request.form.get('amount_paid')
         payment_date = request.form.get('payment_date')
         
         # Validate inputs
-        if not all([student_id, term_id, amount_paid, payment_date]):
+        if not all([student_identifier, term_id, amount_paid, payment_date]):
             flash('All fields are required', 'danger')
             return render_template('add_payment.html', 
-                                students=students, 
                                 terms=terms,
                                 default_date=datetime.now().strftime('%Y-%m-%d'))
-                                
+
         try:
             amount_paid = Decimal(amount_paid)
             if amount_paid <= 0:
                 flash('Amount must be positive', 'danger')
                 return render_template('add_payment.html', 
-                                      students=students, 
-                                      terms=terms,
-                                      default_date=datetime.now().strftime('%Y-%m-%d'))
+                                    terms=terms,
+                                    default_date=datetime.now().strftime('%Y-%m-%d'))
             
             payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
             if payment_date > datetime.now().date():
                 flash('Payment date cannot be in the future', 'danger')
                 return render_template('add_payment.html', 
-                                    students=students, 
                                     terms=terms,
                                     default_date=datetime.now().strftime('%Y-%m-%d'))
             
             with get_db_cursor(commit=True) as cur:
-                # Validate student and term exist
-                cur.execute('SELECT 1 FROM students WHERE id = %s', (student_id,))
-                if not cur.fetchone():
-                    flash('Invalid student selected', 'danger')
+                # Find student by admission no or name
+                cur.execute('''
+                    SELECT id FROM students 
+                    WHERE admission_no = %s OR name ILIKE %s
+                    LIMIT 1
+                ''', (student_identifier, f'%{student_identifier}%'))
+                student = cur.fetchone()
+                
+                if not student:
+                    flash('Student not found', 'danger')
                     return render_template('add_payment.html', 
-                                        students=students, 
                                         terms=terms,
                                         default_date=datetime.now().strftime('%Y-%m-%d'))
                 
+                student_id = student[0]
+                
+                # Validate term exists
                 cur.execute('SELECT 1 FROM terms WHERE id = %s', (term_id,))
                 if not cur.fetchone():
                     flash('Invalid term selected', 'danger')
                     return render_template('add_payment.html', 
-                                        students=students, 
                                         terms=terms,
                                         default_date=datetime.now().strftime('%Y-%m-%d'))
                 
@@ -669,13 +670,35 @@ def add_payment():
             logger.error(f"Error adding payment: {str(e)}")
             flash('Error adding payment', 'danger')
     
+    
+    
     return render_template('add_payment.html', 
                          students=students, 
                          terms=terms,
                          default_date=datetime.now().strftime('%Y-%m-%d'),
                          datetime=datetime)
 
-
+@app.route('/api/students/search')
+@login_required
+def search_students():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify([])
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute('''
+                SELECT id, name, admission_no 
+                FROM students 
+                WHERE admission_no ILIKE %s OR name ILIKE %s
+                ORDER BY name
+                LIMIT 10
+            ''', (f'%{query}%', f'%{query}%'))
+            students = cur.fetchall()
+            return jsonify(students)
+    except Exception as e:
+        logger.error(f"Error searching students: {str(e)}")
+        return jsonify([])
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
