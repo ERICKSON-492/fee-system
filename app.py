@@ -307,70 +307,91 @@ def add_student():
         name = request.form['name'].strip()
         form = request.form['form'].strip()
         
-        if not admission_no or not name or not form:
+        # Validate inputs
+        if not all([admission_no, name, form]):
             flash('All fields are required', 'danger')
+            return render_template('add_student.html')
+        
+        if len(admission_no) > 20:
+            flash('Admission number too long (max 20 characters)', 'danger')
             return render_template('add_student.html')
         
         try:
             with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s)',
-                    (admission_no, name, form)
-                )
-                # Initialize balance for new student
-                student_id = cur.lastrowid
-                cur.execute(
-                    'INSERT INTO student_balances (student_id, current_balance) VALUES (%s, 0)',
-                    (student_id,)
-                )
+                # Check for duplicate admission number
+                cur.execute('SELECT 1 FROM students WHERE admission_no = %s', (admission_no,))
+                if cur.fetchone():
+                    flash('Admission number already exists', 'danger')
+                    return render_template('add_student.html')
+                
+                # Insert new student
+                cur.execute('''
+                    INSERT INTO students (admission_no, name, form) 
+                    VALUES (%s, %s, %s) 
+                    RETURNING id
+                ''', (admission_no, name, form))
+                student_id = cur.fetchone()[0]
+                
+                # Initialize balance
+                cur.execute('''
+                    INSERT INTO student_balances (student_id, current_balance)
+                    VALUES (%s, 0)
+                ''', (student_id,))
+                
                 flash('Student added successfully!', 'success')
                 return redirect(url_for('view_students'))
-        except psycopg2.IntegrityError:
-            flash('Admission number must be unique!', 'danger')
+                
+        except psycopg2.Error as e:
+            logger.error(f"Database error in add_student: {str(e)}")
+            flash('Database error while adding student', 'danger')
         except Exception as e:
-            logger.error(f"Error in add_student: {str(e)}")
-            flash(f'Error adding student: {str(e)}', 'danger')
+            logger.error(f"Unexpected error in add_student: {str(e)}")
+            flash('Error adding student', 'danger')
     
     return render_template('add_student.html')
+
 
 @app.route('/student/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_student(id):
+    # Get existing student data
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute('SELECT * FROM students WHERE id = %s', (id,))
+            student = cur.fetchone()
+            
+            if not student:
+                flash('Student not found', 'danger')
+                return redirect(url_for('view_students'))
+    except Exception as e:
+        logger.error(f"Error retrieving student: {str(e)}")
+        flash('Error retrieving student data', 'danger')
+        return redirect(url_for('view_students'))
+
     if request.method == 'POST':
         name = request.form['name'].strip()
         form = request.form['form'].strip()
         
-        if not name or not form:
+        if not all([name, form]):
             flash('All fields are required', 'danger')
             return redirect(url_for('edit_student', id=id))
         
         try:
             with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'UPDATE students SET name = %s, form = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
-                    (name, form, id)
-                )
+                cur.execute('''
+                    UPDATE students 
+                    SET name = %s, form = %s, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                ''', (name, form, id))
+                
                 flash('Student updated successfully!', 'success')
                 return redirect(url_for('view_students'))
+                
         except Exception as e:
-            logger.error(f"Error in edit_student: {str(e)}")
-            flash(f'Error updating student: {str(e)}', 'danger')
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT * FROM students WHERE id = %s', (id,))
-            student = cur.fetchone()
-    except Exception as e:
-        logger.error(f"Error retrieving student: {str(e)}")
-        flash('Error retrieving student', 'danger')
-        return redirect(url_for('view_students'))
-    
-    if not student:
-        flash('Student not found', 'danger')
-        return redirect(url_for('view_students'))
+            logger.error(f"Error updating student: {str(e)}")
+            flash('Error updating student', 'danger')
     
     return render_template('edit_student.html', student=student)
-
 @app.route('/student/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_student(id):
@@ -406,7 +427,8 @@ def add_term():
         name = request.form['name'].strip()
         amount = request.form['amount'].strip()
         
-        if not name or not amount:
+        # Validate inputs
+        if not all([name, amount]):
             flash('All fields are required', 'danger')
             return render_template('add_term.html')
         
@@ -415,32 +437,59 @@ def add_term():
             if amount <= 0:
                 flash('Amount must be positive', 'danger')
                 return render_template('add_term.html')
+            if amount > Decimal('9999999.99'):
+                flash('Amount is too large (max 9,999,999.99)', 'danger')
+                return render_template('add_term.html')
                 
             with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'INSERT INTO terms (name, amount) VALUES (%s, %s)',
-                    (name, amount)
-                )
+                # Check for duplicate term name
+                cur.execute('SELECT 1 FROM terms WHERE name = %s', (name,))
+                if cur.fetchone():
+                    flash('Term name already exists', 'danger')
+                    return render_template('add_term.html')
+                
+                # Insert new term
+                cur.execute('''
+                    INSERT INTO terms (name, amount)
+                    VALUES (%s, %s)
+                ''', (name, amount))
+                
                 flash('Term added successfully!', 'success')
                 return redirect(url_for('view_terms'))
+                
         except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
         except psycopg2.IntegrityError:
-            flash('Term name must be unique!', 'danger')
+            flash('Term name must be unique', 'danger')
         except Exception as e:
-            logger.error(f"Error in add_term: {str(e)}")
-            flash(f'Error adding term: {str(e)}', 'danger')
+            logger.error(f"Error adding term: {str(e)}")
+            flash('Error adding term', 'danger')
     
     return render_template('add_term.html')
+
 
 @app.route('/term/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_term(id):
+    # Get existing term data
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
+            term = cur.fetchone()
+            
+            if not term:
+                flash('Term not found', 'danger')
+                return redirect(url_for('view_terms'))
+    except Exception as e:
+        logger.error(f"Error retrieving term: {str(e)}")
+        flash('Error retrieving term data', 'danger')
+        return redirect(url_for('view_terms'))
+
     if request.method == 'POST':
         name = request.form['name'].strip()
         amount = request.form['amount'].strip()
         
-        if not name or not amount:
+        if not all([name, amount]):
             flash('All fields are required', 'danger')
             return redirect(url_for('edit_term', id=id))
         
@@ -449,37 +498,45 @@ def edit_term(id):
             if amount <= 0:
                 flash('Amount must be positive', 'danger')
                 return redirect(url_for('edit_term', id=id))
+            if amount > Decimal('9999999.99'):
+                flash('Amount is too large (max 9,999,999.99)', 'danger')
+                return redirect(url_for('edit_term', id=id))
                 
             with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'UPDATE terms SET name = %s, amount = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
-                    (name, amount, id)
-                )
+                # Check for duplicate term name (excluding current term)
+                cur.execute('''
+                    SELECT 1 FROM terms 
+                    WHERE name = %s AND id != %s
+                ''', (name, id))
+                if cur.fetchone():
+                    flash('Term name already exists', 'danger')
+                    return redirect(url_for('edit_term', id=id))
+                
+                # Update term
+                cur.execute('''
+                    UPDATE terms 
+                    SET name = %s, amount = %s, updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                ''', (name, amount, id))
+                
+                # Recalculate all student balances
+                cur.execute('SELECT id FROM students')
+                student_ids = [row[0] for row in cur.fetchall()]
+                for student_id in student_ids:
+                    calculate_student_balance(student_id)
+                
                 flash('Term updated successfully!', 'success')
                 return redirect(url_for('view_terms'))
+                
         except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
         except psycopg2.IntegrityError:
-            flash('Term name must be unique!', 'danger')
+            flash('Term name must be unique', 'danger')
         except Exception as e:
             logger.error(f"Error updating term: {str(e)}")
-            flash(f'Error updating term: {str(e)}', 'danger')
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
-            term = cur.fetchone()
-    except Exception as e:
-        logger.error(f"Error retrieving term: {str(e)}")
-        flash('Error retrieving term', 'danger')
-        return redirect(url_for('view_terms'))
-    
-    if not term:
-        flash('Term not found', 'danger')
-        return redirect(url_for('view_terms'))
+            flash('Error updating term', 'danger')
     
     return render_template('edit_term.html', term=term)
-
 @app.route('/term/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_term(id):
@@ -528,65 +585,94 @@ def view_payments():
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
+    # Get students and terms for dropdowns
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute('SELECT id, name, admission_no FROM students ORDER BY name')
+            students = cur.fetchall()
+            
+            cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
+            terms = cur.fetchall()
+    except Exception as e:
+        logger.error(f"Error loading payment form data: {str(e)}")
+        flash('Error loading payment form', 'danger')
+        return redirect(url_for('view_payments'))
+
     if request.method == 'POST':
         student_id = request.form.get('student_id')
         term_id = request.form.get('term_id')
         amount_paid = request.form.get('amount_paid')
         payment_date = request.form.get('payment_date')
-
+        
         # Validate inputs
         if not all([student_id, term_id, amount_paid, payment_date]):
             flash('All fields are required', 'danger')
-            return redirect(url_for('add_payment'))
-
+            return render_template('add_payment.html', 
+                                students=students, 
+                                terms=terms,
+                                default_date=datetime.now().strftime('%Y-%m-%d'))
+        
         try:
             amount_paid = Decimal(amount_paid)
             if amount_paid <= 0:
                 flash('Amount must be positive', 'danger')
-                return redirect(url_for('add_payment'))
-
+                return render_template('add_payment.html', 
+                                      students=students, 
+                                      terms=terms,
+                                      default_date=datetime.now().strftime('%Y-%m-%d'))
+            
             payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
-            receipt_number = generate_receipt_number()
-
+            if payment_date > datetime.now().date():
+                flash('Payment date cannot be in the future', 'danger')
+                return render_template('add_payment.html', 
+                                    students=students, 
+                                    terms=terms,
+                                    default_date=datetime.now().strftime('%Y-%m-%d'))
+            
             with get_db_cursor(commit=True) as cur:
+                # Validate student and term exist
+                cur.execute('SELECT 1 FROM students WHERE id = %s', (student_id,))
+                if not cur.fetchone():
+                    flash('Invalid student selected', 'danger')
+                    return render_template('add_payment.html', 
+                                        students=students, 
+                                        terms=terms,
+                                        default_date=datetime.now().strftime('%Y-%m-%d'))
+                
+                cur.execute('SELECT 1 FROM terms WHERE id = %s', (term_id,))
+                if not cur.fetchone():
+                    flash('Invalid term selected', 'danger')
+                    return render_template('add_payment.html', 
+                                        students=students, 
+                                        terms=terms,
+                                        default_date=datetime.now().strftime('%Y-%m-%d'))
+                
+                # Generate receipt number
+                receipt_number = generate_receipt_number()
+                
                 # Insert payment
                 cur.execute('''
                     INSERT INTO payments 
                     (student_id, term_id, amount_paid, payment_date, receipt_number)
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-
+                
                 # Update student balance
                 calculate_student_balance(student_id)
-
+                
                 flash('Payment added successfully!', 'success')
                 return redirect(url_for('view_payments'))
-
-        except ValueError as e:
+                
+        except ValueError:
             flash('Invalid date or amount format', 'danger')
         except Exception as e:
-            logger.error(f"Error in add_payment: {str(e)}")
-            flash(f'Error adding payment: {str(e)}', 'danger')
-
-    # GET request - load students and terms
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT id, name, admission_no FROM students ORDER BY name')
-            students = cur.fetchall()
-
-            cur.execute('SELECT id, name FROM terms ORDER BY name')
-            terms = cur.fetchall()
-
-        return render_template('add_payment.html', 
-                            students=students, 
-                            terms=terms,
-                            default_date=datetime.now().strftime('%Y-%m-%d'))
-
-    except Exception as e:
-        logger.error(f"Error loading payment form: {str(e)}")
-        flash('Error loading payment form', 'danger')
-        return redirect(url_for('view_payments'))
-
+            logger.error(f"Error adding payment: {str(e)}")
+            flash('Error adding payment', 'danger')
+    
+    return render_template('add_payment.html', 
+                         students=students, 
+                         terms=terms,
+                         default_date=datetime.now().strftime('%Y-%m-%d'))
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
@@ -888,38 +974,57 @@ def student_outstanding_details(student_id):
 @login_required
 def generate_outstanding_notice(student_id):
     try:
-        with get_db_cursor(commit=True) as cur:
-            # Verify student has outstanding balance
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Verify student exists and has balance
             cur.execute('''
-                SELECT current_balance 
-                FROM student_balances 
-                WHERE student_id = %s
+                SELECT s.id, s.name, s.admission_no, sb.current_balance
+                FROM students s
+                JOIN student_balances sb ON s.id = sb.student_id
+                WHERE s.id = %s AND sb.current_balance > 0
             ''', (student_id,))
-            balance = cur.fetchone()[0]
+            student = cur.fetchone()
+            
+            if not student:
+                flash('Student not found or has no outstanding balance', 'warning')
+                return redirect(url_for('outstanding_balances'))
 
-            if not balance or balance <= 0:
-                flash('Student has no outstanding balance', 'warning')
+            # Check for existing unpaid notice
+            cur.execute('''
+                SELECT 1 
+                FROM outstanding_balance_notices
+                WHERE student_id = %s AND is_paid = FALSE
+            ''', (student_id,))
+            if cur.fetchone():
+                flash('This student already has an active outstanding notice', 'warning')
                 return redirect(url_for('student_outstanding_details', student_id=student_id))
 
             # Generate reference number
             reference_no = f"OB-{datetime.now().strftime('%Y%m%d')}-{student_id}-{random.randint(1000, 9999)}"
-
-            # Create notice
+            
+            # Set dates
             issued_date = datetime.now().date()
             due_date = issued_date + timedelta(days=14)
-
-            cur.execute('''
-                INSERT INTO outstanding_balance_notices
-                (student_id, amount, issued_date, due_date, reference_number)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (student_id, balance, issued_date, due_date, reference_no))
-
+            
+            # Create notice
+            with get_db_cursor(commit=True) as insert_cur:
+                insert_cur.execute('''
+                    INSERT INTO outstanding_balance_notices
+                    (student_id, amount, issued_date, due_date, reference_number)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (
+                    student_id,
+                    student['current_balance'],
+                    issued_date,
+                    due_date,
+                    reference_no
+                ))
+            
             flash('Outstanding balance notice generated successfully', 'success')
             return redirect(url_for('student_outstanding_details', student_id=student_id))
-
+            
     except Exception as e:
-        logger.error(f"Error in generate_outstanding_notice: {str(e)}")
-        flash('Error generating notice', 'danger')
+        logger.error(f"Error generating notice: {str(e)}", exc_info=True)
+        flash('Error generating outstanding balance notice', 'danger')
         return redirect(url_for('student_outstanding_details', student_id=student_id))
 
 
@@ -975,29 +1080,39 @@ Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
 def outstanding_notice_pdf(notice_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get notice details (same as view_outstanding_notice)
+            # Get notice details with student info
             cur.execute('''
                 SELECT 
                     obn.*,
                     s.name AS student_name,
                     s.admission_no,
-                    s.form
+                    s.form,
+                    sb.current_balance
                 FROM outstanding_balance_notices obn
                 JOIN students s ON obn.student_id = s.id
+                JOIN student_balances sb ON s.id = sb.student_id
                 WHERE obn.id = %s
             ''', (notice_id,))
             notice = cur.fetchone()
-
+            
             if not notice:
                 flash('Notice not found', 'danger')
                 return redirect(url_for('outstanding_balances'))
 
+            # Format dates and amounts
+            issued_date = notice['issued_date'].strftime('%d/%m/%Y')
+            due_date = notice['due_date'].strftime('%d/%m/%Y')
+            amount = float(notice['amount'])
+            current_balance = float(notice['current_balance'])
+            
             # Generate QR code
             qr_data = f"""Outstanding Balance Notice
 Reference: {notice['reference_number']}
 Student: {notice['student_name']} ({notice['admission_no']})
-Amount: KSh {float(notice['amount']):,.2f}
-Due Date: {notice['due_date'].strftime('%d/%m/%Y')}
+Amount Due: KSh {amount:,.2f}
+Current Balance: KSh {current_balance:,.2f}
+Issued: {issued_date}
+Due: {due_date}
 Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
             
             qr_img = qrcode.make(qr_data)
@@ -1005,21 +1120,26 @@ Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
 
+            # Generate PDF
             html = render_template('outstanding_notice_pdf.html',
                                 notice=notice,
+                                issued_date=issued_date,
+                                due_date=due_date,
+                                amount=amount,
+                                current_balance=current_balance,
                                 qr_code=qr_b64,
                                 logo_base64=get_logo_base64(),
-                                current_date=datetime.now().date())
-
-            pdf_bytes = HTML(string=html).write_pdf()
+                                current_date=datetime.now().strftime('%d/%m/%Y'))
+            
+            pdf_bytes = HTML(string=html, base_url=request.host_url).write_pdf()
             
             response = make_response(pdf_bytes)
             response.headers['Content-Type'] = 'application/pdf'
-            response.headers['Content-Disposition'] = f'inline; filename=outstanding_balance_{notice["reference_number"]}.pdf'
+            response.headers['Content-Disposition'] = f'inline; filename=Outstanding_Balance_{notice["reference_number"]}.pdf'
             return response
-
+            
     except Exception as e:
-        logger.error(f"Error in outstanding_notice_pdf: {str(e)}")
+        logger.error(f"Error generating PDF notice: {str(e)}", exc_info=True)
         flash('Error generating PDF notice', 'danger')
         return redirect(url_for('outstanding_balances'))
 if __name__ == '__main__':
