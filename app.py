@@ -3,6 +3,8 @@ import time
 import psycopg2
 from psycopg2 import pool, extras
 from datetime import datetime, timedelta  # Ensure this is at the top of your app.py
+from flask import request
+from flask_paginate import Pagination, get_page_args
 
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session, jsonify
 from weasyprint import HTML
@@ -416,39 +418,58 @@ def delete_term(id):
     
     return redirect(url_for('view_terms'))
 
+
 @app.route('/payments')
 @login_required
 def view_payments():
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('''
-                SELECT p.id, s.name AS student_name, s.admission_no,
-                       t.name AS term_name, p.amount_paid, p.payment_date,
-                       p.receipt_number
-                FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
-                ORDER BY p.payment_date DESC
-            ''')
-            payments = cur.fetchall()
-            
-            cur.execute('SELECT id, name FROM students ORDER BY name')
-            students = cur.fetchall()
-            
-            cur.execute('SELECT id, name FROM terms ORDER BY name')
-            terms = cur.fetchall()
-    except Exception as e:
-        flash('Error retrieving payments', 'danger')
-        print(f"Error in view_payments: {str(e)}")
-        payments = []
-        students = []
-        terms = []
+    search = request.args.get('search', '').strip()
     
-    return render_template('payments.html', 
+    # Base query
+    query = '''
+        SELECT p.*, s.name as student_name, s.admission_no, t.name as term_name
+        FROM payments p
+        JOIN students s ON p.student_id = s.id
+        JOIN terms t ON p.term_id = t.id
+    '''
+    
+    # Add search filter if provided
+    if search:
+        query += " WHERE s.admission_no LIKE %s"
+        params = (f'%{search}%',)
+    else:
+        params = ()
+    
+    query += " ORDER BY p.payment_date DESC"
+    
+    # Pagination logic
+    page, per_page, offset = get_page_args(page_parameter='page', per_page_parameter='per_page')
+    per_page = 10  # Items per page
+    
+    # Get total count
+    with get_db_cursor() as cur:
+        count_query = "SELECT COUNT(*) FROM (" + query + ") AS subquery"
+        cur.execute(count_query, params)
+        total = cur.fetchone()[0]
+        
+        # Get paginated results
+        paginated_query = query + " LIMIT %s OFFSET %s"
+        cur.execute(paginated_query, params + (per_page, offset))
+        payments = cur.fetchall()
+    
+    pagination = Pagination(page=page, per_page=per_page, total=total,
+                           search=search, record_name='payments')
+    
+    # Get terms for the form dropdown
+    with get_db_cursor() as cur:
+        cur.execute("SELECT id, name FROM terms ORDER BY name")
+        terms = cur.fetchall()
+    
+    return render_template('payments.html',
                          payments=payments,
-                         students=students,
-                         terms=terms)
-
+                         terms=terms,
+                         pagination=pagination,
+                         search=search,
+                         today=datetime.now().date())
 @app.route('/payment/add', methods=['POST'])
 @login_required
 def add_payment():
