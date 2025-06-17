@@ -3,46 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}School Fees Management{% endblock %}</title>
+    <title>{% block title %}School Fees Management System{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
     <style>
-        :root {
-            --primary-color: #3498db;
-            --secondary-color: #2980b9;
-            --accent-color: #e74c3c;
-            --light-color: #f8f9fa;
-            --dark-color: #343a40;
-        }
-        
         body {
-            background-color: #f5f5f5;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-top: 56px;
+            background-color: #f8f9fa;
         }
         
         .sidebar {
-            background-color: var(--dark-color);
-            color: white;
-            min-height: 100vh;
+            height: 100vh;
             position: fixed;
+            left: 0;
+            top: 56px;
             width: 250px;
+            background-color: #343a40;
+            color: white;
+            padding: 20px 0;
             transition: all 0.3s;
+            z-index: 1000;
         }
         
         .sidebar .nav-link {
             color: rgba(255, 255, 255, 0.8);
-            padding: 0.75rem 1rem;
-            margin-bottom: 0.2rem;
-            border-radius: 0.25rem;
+            padding: 10px 20px;
+            margin: 5px 0;
         }
         
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background-color: rgba(255, 255, 255, 0.1);
+        .sidebar .nav-link:hover {
             color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar .nav-link.active {
+            color: white;
+            background-color: #007bff;
         }
         
         .sidebar .nav-link i {
             margin-right: 10px;
+            width: 20px;
+            text-align: center;
         }
         
         .main-content {
@@ -51,180 +59,220 @@
             transition: all 0.3s;
         }
         
-        .card {
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-            border: none;
-        }
-        
-        .card-header {
-            background-color: var(--primary-color);
-            color: white;
-            border-radius: 10px 10px 0 0 !important;
-            padding: 15px 20px;
-            font-weight: 600;
-        }
-        
-        .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-primary:hover {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-        }
-        
-        .btn-danger {
-            background-color: var(--accent-color);
-            border-color: var(--accent-color);
-        }
-        
-        .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-        
-        .logo {
-            padding: 15px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .logo h4 {
-            font-weight: 700;
-            margin-bottom: 0;
-        }
-        
-        .user-profile {
-            padding: 15px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .user-profile img {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            object-fit: cover;
-            margin-bottom: 10px;
-            border: 3px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .alert {
-            border-radius: 8px;
-        }
-        
-        .receipt-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-        }
-        
         @media (max-width: 768px) {
             .sidebar {
-                margin-left: -250px;
+                width: 0;
+                overflow: hidden;
             }
             
             .main-content {
                 margin-left: 0;
             }
             
-            .sidebar.active {
-                margin-left: 0;
-            }
-            
-            .main-content.active {
-                margin-left: 250px;
+            .sidebar.show {
+                width: 250px;
             }
         }
+        
+        .logo-container {
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .logo-container img {
+            max-width: 80%;
+            height: auto;
+        }
+        
+        .balance-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .balance-negative {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .flash-messages {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 1100;
+            min-width: 300px;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+        }
+        
+        .badge-notice {
+            background-color: #6c757d;
+        }
+        
+        .badge-overdue {
+            background-color: #dc3545;
+        }
     </style>
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="d-flex">
-        <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
-            <div class="logo">
-                <h4><i class="bi bi-cash-stack"></i> Fees Manager</h4>
-            </div>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+        <div class="container-fluid">
+            <button class="navbar-toggler me-2" type="button" onclick="toggleSidebar()">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-school me-2"></i>Fees Management
+            </a>
             
-            <div class="user-profile">
-                <img src="https://ui-avatars.com/api/?name={{ session.username }}&background=random" alt="User">
-                <h5 class="text-white mt-2">{{ session.username }}</h5>
-            </div>
-            
-            <div class="px-3 py-4">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == url_for('dashboard') %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                            <i class="bi bi-speedometer2"></i> Dashboard
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i>{{ session.get('username', 'User') }}
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == url_for('view_students') %}active{% endif %}" href="{{ url_for('view_students') }}">
-                            <i class="bi bi-people-fill"></i> Students
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == url_for('view_terms') %}active{% endif %}" href="{{ url_for('view_terms') }}">
-                            <i class="bi bi-journal-bookmark"></i> Terms
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == url_for('view_payments') %}active{% endif %}" href="{{ url_for('view_payments') }}">
-                            <i class="bi bi-credit-card"></i> Payments
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == url_for('outstanding_report') %}active{% endif %}" href="{{ url_for('outstanding_report') }}">
-                            <i class="bi bi-graph-up"></i> Reports
-                        </a>
-                    </li>
-                    <li class="nav-item mt-4">
-                        <a class="nav-link text-danger" href="{{ url_for('logout') }}">
-                            <i class="bi bi-box-arrow-right"></i> Logout
-                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Profile</a></li>
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        </ul>
                     </li>
                 </ul>
             </div>
         </div>
-        
-        <!-- Main Content -->
-        <div class="main-content" id="main-content">
-            <button class="btn btn-primary d-md-none mb-3" type="button" id="sidebarToggle">
-                <i class="bi bi-list"></i>
-            </button>
-            
-            <!-- Flash Messages -->
+    </nav>
+    
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="logo-container">
+            <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="School Logo" class="img-fluid">
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'view_students' %}active{% endif %}" href="{{ url_for('view_students') }}">
+                    <i class="fas fa-users"></i> Students
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'view_terms' %}active{% endif %}" href="{{ url_for('view_terms') }}">
+                    <i class="fas fa-list-alt"></i> Fee Terms
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'view_payments' %}active{% endif %}" href="{{ url_for('view_payments') }}">
+                    <i class="fas fa-money-bill-wave"></i> Payments
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'outstanding_balances' %}active{% endif %}" href="{{ url_for('outstanding_balances') }}">
+                    <i class="fas fa-exclamation-circle"></i> Outstanding Balances
+                </a>
+            </li>
+            <li class="nav-item mt-4">
+                <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#quickReceiptModal">
+                    <i class="fas fa-receipt"></i> Quick Receipt
+                </a>
+            </li>
+        </ul>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content" id="mainContent">
+        <!-- Flash Messages -->
+        <div class="flash-messages">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-dismissible fade show">
+                        <div class="alert alert-{{ category }} alert-dismissible fade show mb-2" role="alert">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            
-            <!-- Page Content -->
-            {% block content %}{% endblock %}
+        </div>
+        
+        <!-- Page Content -->
+        {% block content %}{% endblock %}
+    </div>
+    
+    <!-- Quick Receipt Modal -->
+    <div class="modal fade" id="quickReceiptModal" tabindex="-1" aria-labelledby="quickReceiptModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="quickReceiptModalLabel">Quick Receipt Lookup</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="quickReceiptForm" action="{{ url_for('view_receipt') }}" method="GET">
+                        <div class="mb-3">
+                            <label for="receiptNumber" class="form-label">Receipt Number</label>
+                            <input type="text" class="form-control" id="receiptNumber" name="payment_id" placeholder="Enter receipt number" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="quickReceiptForm" class="btn btn-primary">View Receipt</button>
+                </div>
+            </div>
         </div>
     </div>
-
+    
+    <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
     <script>
-        // Toggle sidebar on mobile
-        document.getElementById('sidebarToggle').addEventListener('click', function() {
-            document.getElementById('sidebar').classList.toggle('active');
-            document.getElementById('main-content').classList.toggle('active');
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('show');
+            
+            const mainContent = document.getElementById('mainContent');
+            if (sidebar.classList.contains('show')) {
+                mainContent.style.marginLeft = '250px';
+            } else {
+                mainContent.style.marginLeft = '0';
+            }
+        }
+        
+        // Auto-dismiss flash messages after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(alert => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+        });
+        
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const navbarToggler = document.querySelector('.navbar-toggler');
+            
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                event.target !== navbarToggler && 
+                !navbarToggler.contains(event.target)) {
+                sidebar.classList.remove('show');
+                document.getElementById('mainContent').style.marginLeft = '0';
+            }
         });
     </script>
+    
     {% block extra_js %}{% endblock %}
 </body>
 </html>
