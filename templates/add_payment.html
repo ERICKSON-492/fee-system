@@ -7,14 +7,17 @@
     <h2>Add Payment</h2>
     <div class="card">
         <div class="card-body">
-            <form method="POST" action="{{ url_for('add_payment') }}">
+            <form method="POST" action="{{ url_for('add_payment') }}" id="paymentForm">
                 <div class="mb-3">
-                    <label for="student_identifier" class="form-label">Student (Admission No or Name)</label>
+                    <label for="student_identifier" class="form-label">Student Search</label>
                     <input type="text" class="form-control" id="student_identifier" 
                            name="student_identifier" required
-                           placeholder="Enter admission number or student name">
-                    <small class="text-muted">Start typing to search for students</small>
+                           placeholder="Enter admission number or student name"
+                           autocomplete="off">
+                    <div id="studentResults" class="list-group mt-2" style="display:none;"></div>
+                    <small class="text-muted">Type to search students by name or admission number</small>
                 </div>
+                
                 <div class="mb-3">
                     <label for="term_id" class="form-label">Term</label>
                     <select class="form-select" id="term_id" name="term_id" required>
@@ -24,16 +27,19 @@
                         {% endfor %}
                     </select>
                 </div>
+                
                 <div class="mb-3">
                     <label for="amount_paid" class="form-label">Amount Paid (KSh)</label>
                     <input type="number" step="0.01" class="form-control" id="amount_paid" 
                            name="amount_paid" required>
                 </div>
+                
                 <div class="mb-3">
                     <label for="payment_date" class="form-label">Payment Date</label>
                     <input type="date" class="form-control" id="payment_date" 
                            name="payment_date" value="{{ default_date }}" required>
                 </div>
+                
                 <button type="submit" class="btn btn-primary">Record Payment</button>
                 <a href="{{ url_for('view_payments') }}" class="btn btn-secondary">Cancel</a>
             </form>
@@ -41,26 +47,71 @@
     </div>
 </div>
 
-<!-- Add JavaScript for student search functionality -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const studentInput = document.getElementById('student_identifier');
-    
-    // You can implement autocomplete here using a library like jQuery UI
-    // or fetch students from an API endpoint as the user types
-    
-    // Example with fetch:
+    const resultsContainer = document.getElementById('studentResults');
+    let debounceTimer;
+
     studentInput.addEventListener('input', function() {
-        const searchTerm = this.value;
-        if (searchTerm.length > 2) {
-            // You would need to create an API endpoint for student search
-            // fetch(`/api/students/search?q=${searchTerm}`)
-            //     .then(response => response.json())
-            //     .then(data => {
-            //         // Update UI with search results
-            //     });
+        clearTimeout(debounceTimer);
+        const searchTerm = this.value.trim();
+        
+        if (searchTerm.length < 2) {
+            resultsContainer.style.display = 'none';
+            return;
+        }
+        
+        debounceTimer = setTimeout(() => {
+            fetch(`/api/students/search?q=${encodeURIComponent(searchTerm)}`)
+                .then(response => response.json())
+                .then(students => {
+                    resultsContainer.innerHTML = '';
+                    
+                    if (students.length === 0) {
+                        resultsContainer.style.display = 'none';
+                        return;
+                    }
+                    
+                    students.forEach(student => {
+                        const item = document.createElement('button');
+                        item.type = 'button';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.innerHTML = `
+                            <strong>${student.name}</strong> (${student.admission_no})
+                        `;
+                        item.addEventListener('click', () => {
+                            studentInput.value = student.admission_no;
+                            resultsContainer.style.display = 'none';
+                        });
+                        resultsContainer.appendChild(item);
+                    });
+                    
+                    resultsContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    resultsContainer.style.display = 'none';
+                });
+        }, 300);
+    });
+
+    // Hide results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!studentInput.contains(e.target) && !resultsContainer.contains(e.target)) {
+            resultsContainer.style.display = 'none';
         }
     });
 });
 </script>
+
+<style>
+#studentResults {
+    position: absolute;
+    z-index: 1000;
+    width: calc(100% - 30px);
+    max-height: 200px;
+    overflow-y: auto;
+}
+</style>
 {% endblock %}
