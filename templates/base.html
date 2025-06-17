@@ -215,7 +215,13 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="quickReceiptForm" action="{{ url_for('view_receipt') }}" method="GET">
+                    {% extends "base.html" %}
+
+                    {% block receipt_form %}
+                     <form id="quickReceiptForm" action="{{ url_for('view_receipt', payment_id=current_payment) }}" method="GET">
+                     <!-- form fields -->
+                     </form>
+                     {% endblock %}
                         <div class="mb-3">
                             <label for="receiptNumber" class="form-label">Receipt Number</label>
                             <input type="text" class="form-control" id="receiptNumber" name="payment_id" placeholder="Enter receipt number" required>
