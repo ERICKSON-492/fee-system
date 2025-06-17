@@ -5,52 +5,101 @@
 {% block content %}
 <div class="container mt-4">
     <div class="card">
-        <div class="card-header">
-            <h4><i class="bi bi-cash-coin"></i> Record New Payment</h4>
+        <div class="card-header bg-primary text-white">
+            <h4><i class="bi bi-cash-coin me-2"></i>Record New Payment</h4>
         </div>
         <div class="card-body">
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
             <form method="POST" action="{{ url_for('add_payment') }}">
                 <div class="row g-3">
+                    <!-- Student Selection -->
                     <div class="col-md-6">
                         <label for="admission_no" class="form-label">Student</label>
-                        <select class="form-select" id="admission_no" name="admission_no" required>
+                        <select class="form-select {% if 'admission_no' in form_errors %}is-invalid{% endif %}" 
+                                id="admission_no" name="admission_no" required>
                             <option value="">Select student...</option>
                             {% for student in students %}
-                            <option value="{{ student.admission_no }}">
+                            <option value="{{ student.admission_no }}"
+                                {% if request.method == 'POST' and request.form.admission_no == student.admission_no %}selected{% endif %}>
                                 {{ student.name }} ({{ student.admission_no }})
                             </option>
                             {% endfor %}
                         </select>
+                        {% if 'admission_no' in form_errors %}
+                        <div class="invalid-feedback">
+                            {{ form_errors.admission_no }}
+                        </div>
+                        {% endif %}
                     </div>
                     
+                    <!-- Term Selection -->
                     <div class="col-md-6">
                         <label for="term_id" class="form-label">Term</label>
-                        <select class="form-select" id="term_id" name="term_id" required>
+                        <select class="form-select {% if 'term_id' in form_errors %}is-invalid{% endif %}" 
+                                id="term_id" name="term_id" required>
                             <option value="">Select term...</option>
                             {% for term in terms %}
-                            <option value="{{ term.id }}">{{ term.name }}</option>
+                            <option value="{{ term.id }}"
+                                {% if request.method == 'POST' and request.form.term_id == term.id|string %}selected{% endif %}>
+                                {{ term.name }}
+                            </option>
                             {% endfor %}
                         </select>
+                        {% if 'term_id' in form_errors %}
+                        <div class="invalid-feedback">
+                            {{ form_errors.term_id }}
+                        </div>
+                        {% endif %}
                     </div>
                     
+                    <!-- Amount Paid -->
                     <div class="col-md-6">
                         <label for="amount_paid" class="form-label">Amount (KSh)</label>
-                        <input type="number" step="0.01" min="0" class="form-control" 
-                               id="amount_paid" name="amount_paid" required>
+                        <div class="input-group">
+                            <span class="input-group-text">KSh</span>
+                            <input type="number" step="0.01" min="0" 
+                                   class="form-control {% if 'amount_paid' in form_errors %}is-invalid{% endif %}" 
+                                   id="amount_paid" name="amount_paid" required
+                                   value="{{ request.form.amount_paid if request.method == 'POST' }}">
+                            {% if 'amount_paid' in form_errors %}
+                            <div class="invalid-feedback">
+                                {{ form_errors.amount_paid }}
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
                     
+                    <!-- Payment Date -->
                     <div class="col-md-6">
                         <label for="payment_date" class="form-label">Payment Date</label>
-                        <input type="date" class="form-control" id="payment_date" 
-                               name="payment_date" required value="{{ today }}">
+                        <input type="date" class="form-control {% if 'payment_date' in form_errors %}is-invalid{% endif %}" 
+                               id="payment_date" name="payment_date" required
+                               value="{{ request.form.payment_date if request.method == 'POST' else today }}">
+                        {% if 'payment_date' in form_errors %}
+                        <div class="invalid-feedback">
+                            {{ form_errors.payment_date }}
+                        </div>
+                        {% endif %}
                     </div>
                     
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-save"></i> Record Payment
+                    <!-- Form Actions -->
+                    <div class="col-12 mt-4">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="bi bi-save me-1"></i> Record Payment
                         </button>
-                        <a href="{{ url_for('view_payments') }}" class="btn btn-secondary">
-                            <i class="bi bi-x-circle"></i> Cancel
+                        <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle me-1"></i> Cancel
                         </a>
                     </div>
                 </div>
