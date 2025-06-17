@@ -8,7 +8,7 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     
-    <!-- Font Awesome -->
+    <!-- Font Awesome -->            
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- Custom CSS -->
@@ -150,7 +150,7 @@
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="logo-container">
-            <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="School Logo" class="img-fluid">
+            <img src="{{ url_for('static', filename='images/LOGO.jpg') }}" alt="School Logo" class="img-fluid">
         </div>
         <ul class="nav flex-column">
             <li class="nav-item">
@@ -215,18 +215,16 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    {% extends "base.html" %}
-
-                    {% block receipt_form %}
-                     <form id="quickReceiptForm" action="{{ url_for('view_receipt', payment_id=current_payment) }}" method="GET">
-                     <!-- form fields -->
-                     </form>
-                     {% endblock %}
-                        <div class="mb-3">
-                            <label for="receiptNumber" class="form-label">Receipt Number</label>
-                            <input type="text" class="form-control" id="receiptNumber" name="payment_id" placeholder="Enter receipt number" required>
-                        </div>
+                    <form id="quickReceiptForm" 
+                          action="{% if current_payment %}{{ url_for('view_receipt', payment_id=current_payment) }}{% endif %}" 
+                          method="GET"
+                          {% if not current_payment %}style="display:none"{% endif %}>
+                        <input type="hidden" name="payment_id" value="{{ current_payment }}">
                     </form>
+                    <div class="mb-3">
+                        <label for="receiptNumber" class="form-label">Receipt Number</label>
+                        <input type="text" class="form-control" id="receiptNumber" name="payment_id" placeholder="Enter receipt number" required>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
