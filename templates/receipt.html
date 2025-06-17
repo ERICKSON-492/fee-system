@@ -152,7 +152,28 @@
             </tr>
         </tbody>
     </table>
-    
+    <!-- In your receipt.html template -->
+<div class="balance-info">
+    <h4>Payment Summary</h4>
+    <p>Term: {{ payment.term_name }}</p>
+    <p>Term Fee: KSh{{ "%.2f"|format(payment.term_amount|float) }}</p>
+    <p>Amount Paid: KSh{{ "%.2f"|format(amount_paid) }}</p>
+    <p>Total Paid This Term: KSh{{ "%.2f"|format(term_total_paid) }}</p>
+    <p>Term Balance: 
+        {% if term_balance > 0 %}
+            <span class="text-danger">KSh{{ "%.2f"|format(term_balance) }} Due</span>
+        {% else %}
+            <span class="text-success">KSh{{ "%.2f"|format(-term_balance) }} Credit</span>
+        {% endif %}
+    </p>
+    <p>Cumulative Balance: 
+        {% if cumulative_balance < 0 %}
+            <span class="text-danger">KSh{{ "%.2f"|format(-cumulative_balance) }} Due</span>
+        {% else %}
+            <span class="text-success">KSh{{ "%.2f"|format(cumulative_balance) }} Credit</span>
+        {% endif %}
+    </p>
+</div>
     <!-- Verification -->
     <div class="row">
         <div class="col-6 text-center">
