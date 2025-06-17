@@ -466,6 +466,16 @@ def view_payments():
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
         return redirect(url_for('dashboard'))
+def get_students():
+    with get_db_cursor() as cur:
+        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+        return cur.fetchall()
+
+def get_terms():
+    with get_db_cursor() as cur:
+        cur.execute("SELECT id, name FROM terms ORDER BY name")
+        return cur.fetchall()
+        
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
