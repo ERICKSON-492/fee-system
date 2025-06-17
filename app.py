@@ -468,50 +468,70 @@ def delete_term(id):
     return redirect(url_for('view_terms'))
 
 # Payment management
-@app.route('/payments')
+
+
+@app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
-def view_payments():
-    search = request.args.get('search', '').strip()
-    
+def add_payment():
+    if request.method == 'POST':
+        student_id = request.form.get('student_id', '').strip()
+        term_id = request.form.get('term_id', '').strip()
+        amount_paid = request.form.get('amount_paid', '').strip()
+        payment_date = request.form.get('payment_date', '').strip()
+
+        logger.debug(f"Received data: student_id={student_id}, term_id={term_id}, amount_paid={amount_paid}, payment_date={payment_date}")
+
+        if not student_id or not term_id or not amount_paid or not payment_date:
+            flash('All fields are required.', 'danger')
+            return redirect(url_for('add_payment'))
+
+        try:
+            amount_paid = Decimal(amount_paid)
+            if amount_paid <= 0:
+                flash('Amount must be positive', 'danger')
+                return redirect(url_for('add_payment'))
+
+            try:
+                payment_date_obj = datetime.strptime(payment_date, '%Y-%m-%d')
+            except ValueError:
+                flash('Invalid date format. Use YYYY-MM-DD.', 'danger')
+                return redirect(url_for('add_payment'))
+
+            with get_db_cursor(commit=True) as cur:
+                cur.execute('''
+                    INSERT INTO payments (student_id, term_id, amount_paid, payment_date, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ''', (student_id, term_id, amount_paid, payment_date_obj.date()))
+
+                logger.debug("Inserted payment into DB")
+
+                calculate_student_balance(student_id)
+                logger.debug("Recalculated student balance")
+
+                flash('Payment added successfully!', 'success')
+                return redirect(url_for('view_payments'))
+
+        except (InvalidOperation, ValueError):
+            flash('Amount must be a valid number', 'danger')
+        except Exception as e:
+            logger.error(f"Error in add_payment: {str(e)}")
+            flash(f'Error adding payment: {str(e)}', 'danger')
+
+    # GET request or on error reload students and terms for form
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            query = '''
-                SELECT p.id, p.receipt_number, p.amount_paid, p.payment_date,
-                       s.id as student_id, s.name as student_name, s.admission_no,
-                       t.id as term_id, t.name as term_name
-                FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
-            '''
-            
-            params = []
-            if search:
-                query += " WHERE s.admission_no ILIKE %s OR s.name ILIKE %s OR p.receipt_number ILIKE %s"
-                params = [f'%{search}%', f'%{search}%', f'%{search}%']
-            
-            query += " ORDER BY p.payment_date DESC"
-            cur.execute(query, params)
-            payments = cur.fetchall()
-            
-            for payment in payments:
-                payment['amount_paid'] = float(payment['amount_paid']) if payment['amount_paid'] is not None else 0.0
-            
-            cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+            cur.execute('SELECT id, name FROM students ORDER BY name')
             students = cur.fetchall()
-            
-            cur.execute("SELECT id, name FROM terms ORDER BY name")
+
+            cur.execute('SELECT id, name FROM terms ORDER BY name')
             terms = cur.fetchall()
-            
-        return render_template('payments.html',
-                            payments=payments,
-                            students=students,
-                            terms=terms,
-                            search=search)
-            
+
     except Exception as e:
-        logger.error(f"Error in view_payments: {str(e)}")
-        flash('Error retrieving payment records', 'danger')
-        return redirect(url_for('dashboard'))
+        logger.error(f"Error retrieving students or terms: {str(e)}")
+        flash('Error loading form data', 'danger')
+        return redirect(url_for('view_payments'))
+
+    return render_template('add_payment.html', students=students, terms=terms)
 
 
 @app.route('/payment/add', methods=['GET', 'POST'])
