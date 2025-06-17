@@ -740,19 +740,15 @@ def delete_payment(id):
     
     return redirect(url_for('view_payments'))
 
-# Receipts and reports
 @app.route('/receipt/<int:payment_id>')
 @login_required
 def view_receipt(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # First verify the payment exists and get term_id
             cur.execute('''
-                SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
-                       s.name AS student_name, s.admission_no, s.form,
-                       t.name AS term_name, t.amount AS term_amount
+                SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date, p.receipt_number
                 FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
                 WHERE p.id = %s
             ''', (payment_id,))
             payment = cur.fetchone()
@@ -761,9 +757,31 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
             
+            # Now get all the related information
+            cur.execute('''
+                SELECT 
+                    s.name AS student_name, 
+                    s.admission_no, 
+                    s.form,
+                    t.name AS term_name, 
+                    t.amount AS term_amount
+                FROM students s
+                JOIN terms t ON t.id = %s
+                WHERE s.id = %s
+            ''', (payment['term_id'], payment['student_id']))
+            details = cur.fetchone()
+            
+            if not details:
+                flash('Student or term information not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
+            # Combine the payment and details
+            payment.update(details)
+            
             term_amount = Decimal(str(payment['term_amount']))
             amount_paid = Decimal(str(payment['amount_paid']))
             
+            # Calculate total paid and balance
             cur.execute('''
                 SELECT COALESCE(SUM(amount_paid), 0)
                 FROM payments
@@ -774,6 +792,7 @@ def view_receipt(payment_id):
             
             outstanding_balance = term_amount - total_paid
             
+            # Generate QR code
             qr_data = f"""
             Receipt: {payment['receipt_number']}
             Student: {payment['student_name']} ({payment['admission_no']})
@@ -789,7 +808,7 @@ def view_receipt(payment_id):
             
     except Exception as e:
         flash('Error generating receipt', 'danger')
-        print(f"Error in view_receipt: {str(e)}")
+        print(f"Error in view_receipt: {str(e)}", file=sys.stderr)
         return redirect(url_for('view_payments'))
     
     return render_template('receipt.html',
@@ -799,7 +818,6 @@ def view_receipt(payment_id):
                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         qr_code=qr_b64,
                         logo_base64=logo_base64)
-
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
