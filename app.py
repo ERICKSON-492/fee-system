@@ -15,7 +15,7 @@ from functools import wraps
 from dotenv import load_dotenv
 import logging
 import sys
-
+import random  # Add this with your other imports
 # Load environment variables
 load_dotenv()
 
@@ -998,8 +998,10 @@ def generate_outstanding_notice(student_id):
                 flash('This student already has an active outstanding notice', 'warning')
                 return redirect(url_for('student_outstanding_details', student_id=student_id))
 
-            # Generate reference number
-            reference_no = f"OB-{datetime.now().strftime('%Y%m%d')}-{student_id}-{random.randint(1000, 9999)}"
+            # Generate unique reference number
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            random_suffix = random.randint(1000, 9999)
+            reference_no = f"OB-{timestamp}-{student_id}-{random_suffix}"
             
             # Set dates
             issued_date = datetime.now().date()
@@ -1027,6 +1029,64 @@ def generate_outstanding_notice(student_id):
         flash('Error generating outstanding balance notice', 'danger')
         return redirect(url_for('student_outstanding_details', student_id=student_id))
 
+
+@app.route('/outstanding/notice/<int:notice_id>')
+@login_required
+def view_outstanding_notice(notice_id):
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get notice details with student info
+            cur.execute('''
+                SELECT 
+                    obn.*,
+                    s.name AS student_name,
+                    s.admission_no,
+                    s.form,
+                    sb.current_balance
+                FROM outstanding_balance_notices obn
+                JOIN students s ON obn.student_id = s.id
+                JOIN student_balances sb ON s.id = sb.student_id
+                WHERE obn.id = %s
+            ''', (notice_id,))
+            notice = cur.fetchone()
+            
+            if not notice:
+                flash('Notice not found', 'danger')
+                return redirect(url_for('outstanding_balances'))
+
+            # Format dates
+            issued_date = notice['issued_date'].strftime('%d/%m/%Y')
+            due_date = notice['due_date'].strftime('%d/%m/%Y')
+            
+            # Generate QR code
+            qr_data = f"""Outstanding Balance Notice
+Reference: {notice['reference_number']}
+Student: {notice['student_name']} ({notice['admission_no']})
+Amount Due: KSh {float(notice['amount']):,.2f}
+Current Balance: KSh {float(notice['current_balance']):,.2f}
+Issued: {issued_date}
+Due: {due_date}
+Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
+            
+            qr_img = qrcode.make(qr_data)
+            qr_buffer = BytesIO()
+            qr_img.save(qr_buffer, format="PNG")
+            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+
+            return render_template('outstanding_notice.html',
+                                notice=notice,
+                                issued_date=issued_date,
+                                due_date=due_date,
+                                amount=float(notice['amount']),
+                                current_balance=float(notice['current_balance']),
+                                qr_code=qr_b64,
+                                logo_base64=get_logo_base64(),
+                                current_date=datetime.now().strftime('%d/%m/%Y'))
+            
+    except Exception as e:
+        logger.error(f"Error viewing notice: {str(e)}", exc_info=True)
+        flash('Error viewing notice', 'danger')
+        return redirect(url_for('outstanding_balances'))
 
 @app.route('/outstanding/notice/<int:notice_id>')
 @login_required
