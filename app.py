@@ -961,12 +961,15 @@ Date: {current_date}"""
         return redirect(url_for('outstanding_report'))
 
 # Health check endpoint
+
 @app.route('/health')
 def health_check():
     try:
         with get_db_cursor() as cur:
             cur.execute('SELECT 1')
-            return jsonify
+            return jsonify({"status": "healthy", "database": "connected"})
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
 if __name__ == '__main__':
     try:
