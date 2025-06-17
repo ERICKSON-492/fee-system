@@ -585,7 +585,7 @@ def view_payments():
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
-    # Get terms for dropdown
+    # Get terms for dropdown (always needed for both GET and POST)
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
@@ -626,7 +626,7 @@ def add_payment():
             with get_db_cursor(commit=True) as cur:
                 # Find student by admission no or name
                 cur.execute('''
-                    SELECT id FROM students 
+                    SELECT id, name, admission_no FROM students 
                     WHERE admission_no = %s OR name ILIKE %s
                     LIMIT 1
                 ''', (student_identifier, f'%{student_identifier}%'))
@@ -638,7 +638,7 @@ def add_payment():
                                         terms=terms,
                                         default_date=datetime.now().strftime('%Y-%m-%d'))
                 
-                student_id = student[0]
+                student_id = student['id']
                 
                 # Validate term exists
                 cur.execute('SELECT 1 FROM terms WHERE id = %s', (term_id,))
@@ -661,7 +661,7 @@ def add_payment():
                 # Update student balance
                 calculate_student_balance(student_id)
                 
-                flash('Payment added successfully!', 'success')
+                flash(f'Payment added successfully for {student["name"]} ({student["admission_no"]})!', 'success')
                 return redirect(url_for('view_payments'))
                 
         except ValueError:
@@ -672,8 +672,10 @@ def add_payment():
     
     
     
+    
+    
     return render_template('add_payment.html', 
-                         students=students, 
+                         
                          terms=terms,
                          default_date=datetime.now().strftime('%Y-%m-%d'),
                          datetime=datetime)
