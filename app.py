@@ -85,7 +85,7 @@ def get_db_connection():
         db_pool.putconn(conn)
 
 @contextmanager
-def get_db_cursor(dict_cursor=False):
+def get_db_cursor(dict_cursor=False, commit=False):
     if not db_pool:
         raise RuntimeError("Database connection pool not initialized")
         
@@ -95,9 +95,11 @@ def get_db_cursor(dict_cursor=False):
             cur = conn.cursor(cursor_factory=extras.DictCursor)
         else:
             cur = conn.cursor()
+        
         try:
             yield cur
-            conn.commit()
+            if commit:
+                conn.commit()
         except Exception as e:
             conn.rollback()
             print(f"Database error: {e}")
@@ -106,7 +108,6 @@ def get_db_cursor(dict_cursor=False):
             cur.close()
     finally:
         db_pool.putconn(conn)
-
 def init_db():
     """Initialize database tables"""
     with get_db_cursor() as cur:
@@ -500,42 +501,69 @@ def add_payment():
             receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
             
             with get_db_cursor(commit=True) as cur:
-                # Verify student exists or create if not found
+                # Verify student exists
                 cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
                 student = cur.fetchone()
                 
                 if not student:
-                    # Student not found - prompt to create new student
-                    flash(f'Student {admission_no} not found. Please add student details.', 'warning')
-                    session['pending_payment'] = {
-                        'admission_no': admission_no,
-                        'term_id': term_id,
-                        'amount_paid': amount_paid,
-                        'payment_date': payment_date,
-                        'receipt_number': receipt_number
-                    }
-                    return redirect(url_for('add_student_from_payment'))
+                    flash(f'Student {admission_no} not found. Please add the student first.', 'danger')
+                    return redirect(url_for('add_student', admission_no=admission_no))
                 
                 student_id = student[0]
                 
-                # Rest of payment processing...
-                # ... [keep the existing payment processing code]
-
+                # Verify term exists
+                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
+                term = cur.fetchone()
+                if not term:
+                    flash('Invalid term selected', 'danger')
+                    return redirect(url_for('add_payment'))
+                
+                term_id, term_amount = term
+                
+                # Record payment
+                cur.execute('''
+                    INSERT INTO payments 
+                    (student_id, term_id, amount_paid, payment_date, receipt_number)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+                
+                payment_id = cur.fetchone()[0]
+                
+                # Calculate balance
+                cur.execute('''
+                    SELECT COALESCE(SUM(amount_paid), 0)::float
+                    FROM payments
+                    WHERE student_id = %s AND term_id = %s
+                ''', (student_id, term_id))
+                total_paid = float(cur.fetchone()[0])
+                balance = term_amount - total_paid
+                
+                flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
+                return redirect(url_for('view_receipt', payment_id=payment_id))
+                
         except Exception as e:
             flash('An error occurred while processing your payment', 'danger')
             app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
     
     # GET request - show the form
-    with get_db_cursor(dict_cursor=True) as cur:
-        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
-        students = cur.fetchall()
-        cur.execute("SELECT id, name FROM terms ORDER BY name")
-        terms = cur.fetchall()
-    
-    return render_template('add_payment.html',
-                        students=students,
-                        terms=terms,
-                        today=datetime.now().date())  
+    try:
+        with get_db_cursor() as cur:  # No commit needed for read-only operations
+            cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+            students = cur.fetchall()
+            
+            cur.execute("SELECT id, name FROM terms ORDER BY name")
+            terms = cur.fetchall()
+            
+        return render_template('add_payment.html',
+                            students=students,
+                            terms=terms,
+                            today=datetime.now().date())
+        
+    except Exception as e:
+        flash('Error loading payment form', 'danger')
+        app.logger.error(f"Form loading error: {str(e)}")
+        return redirect(url_for('view_payments'))
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
