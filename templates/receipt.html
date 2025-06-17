@@ -130,14 +130,14 @@
     <!-- Transaction Details -->
     <div class="receipt-details">
         <div>
-            <strong>Receipt No:</strong> {{ payment.receipt_number }}<br>
-            <strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') }}<br>
-            <strong>Time:</strong> {{ current_time.split(' ')[1] }}
+            <strong>Receipt No:</strong> {{ payment.receipt_number or 'N/A' }}<br>
+            <strong>Date:</strong> {{ payment.payment_date.strftime('%d/%m/%Y') if payment.payment_date else 'N/A' }}<br>
+            <strong>Time:</strong> {{ current_time.split(' ')[1] if current_time else 'N/A' }}
         </div>
         <div class="text-right">
-            <strong>Student:</strong> {{ payment.student_name }}<br>
-            <strong>Adm No:</strong> {{ payment.admission_no }}<br>
-            <strong>Form:</strong> {{ payment.form }}
+            <strong>Student:</strong> {{ payment.student_name or 'N/A' }}<br>
+            <strong>Adm No:</strong> {{ payment.admission_no or 'N/A' }}<br>
+            <strong>Form:</strong> {{ payment.form or 'N/A' }}
         </div>
     </div>
     
@@ -151,16 +151,38 @@
         </thead>
         <tbody>
             <tr>
-                <td>Payment for {{ payment.term_name }}</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
+                <td>Payment for {{ payment.term_name or 'Term Payment' }}</td>
+                <td class="text-right">
+                    {% if payment.amount_paid is not none %}
+                        KSh{{ "{:,.2f}".format(payment.amount_paid) }}
+                    {% else %}
+                        KSh0.00
+                    {% endif %}
+                </td>
             </tr>
             <tr>
                 <td class="text-right"><strong>Total Paid:</strong></td>
-                <td class="text-right"><strong>{{ "KSh{:,.2f}".format(payment.amount_paid) }}</strong></td>
+                <td class="text-right">
+                    <strong>
+                        {% if payment.amount_paid is not none %}
+                            KSh{{ "{:,.2f}".format(payment.amount_paid) }}
+                        {% else %}
+                            KSh0.00
+                        {% endif %}
+                    </strong>
+                </td>
             </tr>
             <tr class="balance-row">
                 <td class="text-right"><strong>Balance:</strong></td>
-                <td class="text-right"><strong>{{ "KSh{:,.2f}".format(outstanding_balance) }}</strong></td>
+                <td class="text-right">
+                    <strong>
+                        {% if outstanding_balance is not none %}
+                            KSh{{ "{:,.2f}".format(outstanding_balance) }}
+                        {% else %}
+                            KSh0.00
+                        {% endif %}
+                    </strong>
+                </td>
             </tr>
         </tbody>
     </table>
@@ -169,8 +191,10 @@
     <div class="row">
         <div class="col-6 text-center">
             <div class="qr-code-container">
+                {% if qr_code %}
                 <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 100%;">
                 <div style="font-size: 8pt; margin-top: 1mm;">Scan to verify</div>
+                {% endif %}
             </div>
         </div>
         <div class="col-6">
@@ -184,7 +208,7 @@
     <!-- Footer -->
     <div class="receipt-footer">
         This is an official computer-generated receipt from ST PAUL RONGO<br>
-        {{ current_time.split(' ')[0] }} | Thank you for your payment
+        {{ current_time.split(' ')[0] if current_time else '' }} | Thank you for your payment
     </div>
 </div>
 
