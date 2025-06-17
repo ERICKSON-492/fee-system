@@ -38,12 +38,14 @@
                     <div class="col-md-6">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="student_input_method" 
-                                   id="selectStudent" value="select" checked>
+                                   id="selectStudent" value="select" 
+                                   {% if request.form.student_input_method != 'manual' %}checked{% endif %}>
                             <label class="form-check-label" for="selectStudent">
                                 Select Existing Student
                             </label>
                         </div>
-                        <select class="form-select mt-2" id="student_select" name="admission_no">
+                        <select class="form-select mt-2" id="student_select" name="admission_no"
+                                {% if request.form.student_input_method == 'manual' %}disabled{% endif %}>
                             <option value="">Choose student...</option>
                             {% for student in students %}
                             <option value="{{ student.admission_no }}"
@@ -57,7 +59,8 @@
                     <div class="col-md-6">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="student_input_method" 
-                                   id="manualStudent" value="manual">
+                                   id="manualStudent" value="manual"
+                                   {% if request.form.student_input_method == 'manual' %}checked{% endif %}>
                             <label class="form-check-label" for="manualStudent">
                                 Enter New Admission Number
                             </label>
@@ -66,7 +69,8 @@
                                id="manual_admission" name="manual_admission"
                                value="{{ request.form.manual_admission }}"
                                placeholder="e.g., STD2024-001"
-                               disabled>
+                               {% if request.form.student_input_method != 'manual' %}disabled{% endif %}
+                               {% if request.form.student_input_method == 'manual' %}required{% endif %}>
                     </div>
 
                     <!-- Payment Details Section -->
@@ -127,32 +131,40 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const selectMethod = document.querySelector('input[name="student_input_method"]');
+    const selectMethod = document.querySelectorAll('input[name="student_input_method"]');
     const selectStudent = document.getElementById('student_select');
     const manualInput = document.getElementById('manual_admission');
     
     // Toggle between input methods
-    selectMethod.addEventListener('change', function() {
-        if (this.value === 'manual') {
-            manualInput.disabled = false;
-            manualInput.required = true;
-            selectStudent.disabled = true;
-            selectStudent.required = false;
-            selectStudent.value = '';
-        } else {
-            manualInput.disabled = true;
-            manualInput.required = false;
-            manualInput.value = '';
-            selectStudent.disabled = false;
-            selectStudent.required = true;
-        }
+    selectMethod.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'manual') {
+                manualInput.disabled = false;
+                manualInput.required = true;
+                selectStudent.disabled = true;
+                selectStudent.required = false;
+                selectStudent.value = '';
+            } else {
+                manualInput.disabled = true;
+                manualInput.required = false;
+                manualInput.value = '';
+                selectStudent.disabled = false;
+                selectStudent.required = true;
+            }
+        });
     });
     
     // Form validation
     document.getElementById('paymentForm').addEventListener('submit', function(e) {
-        if (!selectStudent.value && !manualInput.value) {
+        const selectedMethod = document.querySelector('input[name="student_input_method"]:checked').value;
+        if (selectedMethod === 'manual' && !manualInput.value.trim()) {
             e.preventDefault();
-            alert('Please either select a student or enter an admission number');
+            alert('Please enter an admission number');
+            manualInput.focus();
+        } else if (selectedMethod === 'select' && !selectStudent.value) {
+            e.preventDefault();
+            alert('Please select a student');
+            selectStudent.focus();
         }
     });
 });
@@ -161,6 +173,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <style>
     .border-bottom {
         border-bottom: 1px solid #dee2e6 !important;
+    }
+    [disabled] {
+        background-color: #f8f9fa;
+        opacity: 0.7;
     }
 </style>
 {% endblock %}
