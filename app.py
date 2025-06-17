@@ -473,43 +473,37 @@ def view_payments():
 @app.route('/payment/add', methods=['POST'])
 @login_required
 def add_payment():
-    admission_no = request.form.get('admission_no', '').strip().upper()  # Force uppercase for consistency
+    student_input = request.form.get('student_input', '').strip()
     term_id = request.form.get('term_id', '').strip()
     amount_paid = request.form.get('amount_paid', '').strip()
     payment_date = request.form.get('payment_date', '').strip()
     
-    # Validation
-    if not all([admission_no, term_id, amount_paid, payment_date]):
-        flash('All fields are required', 'danger')
+    if not all([student_input, term_id, amount_paid, payment_date]):
+        flash('Please fill in all payment fields', 'danger')
         return redirect(url_for('view_payments'))
     
     try:
         amount_paid = float(amount_paid)
-        if amount_paid <= 0:
-            flash('Amount must be positive', 'danger')
-            return redirect(url_for('view_payments'))
+        receipt_number = f"RCPT-{datetime.now().strftime('%s%m%d')}-{os.urandom(2).hex().upper()}"
         
-        # Generate receipt number (format: RCPT-{timestamp}-{random})
-        receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
-        
-        with get_db_cursor(commit=True) as cur:  # Ensure auto-commit
-            # 1. Find student by admission_no ONLY
-            cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
+        with get_db_cursor() as cur:
+            cur.execute('''
+                SELECT id FROM students 
+                WHERE id = %s OR admission_no = %s
+            ''', (student_input, student_input))
             student = cur.fetchone()
             
             if not student:
-                flash(f'Student with admission number {admission_no} not found', 'danger')
+                flash('Student not found', 'danger')
                 return redirect(url_for('view_payments'))
             
             student_id = student[0]
             
-            # 2. Verify term exists
             cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
             if not cur.fetchone():
-                flash('Invalid term selected', 'danger')
+                flash('Term not found', 'danger')
                 return redirect(url_for('view_payments'))
             
-            # 3. Record payment
             cur.execute('''
                 INSERT INTO payments 
                 (student_id, term_id, amount_paid, payment_date, receipt_number)
@@ -518,14 +512,14 @@ def add_payment():
             ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
             
             payment_id = cur.fetchone()[0]
-            flash(f'Payment recorded for admission #{admission_no} (Receipt: {receipt_number})', 'success')
+            flash('Payment recorded successfully!', 'success')
             return redirect(url_for('view_receipt', payment_id=payment_id))
             
     except ValueError:
-        flash('Invalid amount format', 'danger')
+        flash('Amount must be a valid number', 'danger')
     except Exception as e:
-        flash('Payment failed - please try again', 'danger')
-        current_app.logger.error(f"Payment error: {str(e)}", exc_info=True)
+        flash(f'Error recording payment: {str(e)}', 'danger')
+        print(f"Error in add_payment: {str(e)}")
     
     return redirect(url_for('view_payments'))
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
