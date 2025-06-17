@@ -325,7 +325,8 @@ def edit_student(id):
         try:
             with get_db_cursor() as cur:
                 cur.execute(
-                    'UPDATE students SET name = %s, form = %s WHERE id = %s',
+              int(f"Error in edit_term: {str(e)}")
+         'UPDATE students SET name = %s, form = %s WHERE id = %s',
                     (name, form, id)
                 )
                 flash('Student updated successfully!', 'success')
@@ -425,8 +426,7 @@ def edit_term(id):
             flash('Term name must be unique!', 'danger')
         except Exception as e:
             flash(f'Error updating term: {str(e)}', 'danger')
-            print(f"Error in edit_term: {str(e)}")
-    
+            pr 
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
@@ -981,7 +981,7 @@ Date: {current_date}"""
                                 student=student,
                                 current_date=current_date,
                                 due_date=due_date,
-                                reference_no=reference
+                                reference_no=reference_no,
                                 qr_code=qr_b64,
                                 logo_base64=get_logo_base64())
             
