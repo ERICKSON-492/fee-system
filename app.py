@@ -466,7 +466,7 @@ def view_payments():
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
         return redirect(url_for('dashboard'))
- @app.route('/payment/add', methods=['GET', 'POST'])
+@app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
     today = datetime.now().date().isoformat()
@@ -527,29 +527,69 @@ def add_payment():
                                     today=today,
                                     form_data=request.form)
             
-            # Process payment (your existing payment processing code)
-            # ...
+            # Process payment
+            receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
             
+            with get_db_cursor(commit=True) as cur:
+                # Verify student exists
+                cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
+                student = cur.fetchone()
+                
+                if not student:
+                    flash(f'Student {admission_no} not found. Please add the student first.', 'danger')
+                    session['pending_payment'] = {
+                        'admission_no': admission_no,
+                        'term_id': term_id,
+                        'amount_paid': amount_paid,
+                        'payment_date': payment_date,
+                        'receipt_number': receipt_number
+                    }
+                    return redirect(url_for('add_student_from_payment'))
+                
+                student_id = student[0]
+                
+                # Verify term exists
+                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
+                term = cur.fetchone()
+                if not term:
+                    flash('Invalid term selected', 'danger')
+                    return redirect(url_for('add_payment'))
+                
+                term_id, term_amount = term
+                
+                # Record payment
+                cur.execute('''
+                    INSERT INTO payments 
+                    (student_id, term_id, amount_paid, payment_date, receipt_number)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+                
+                payment_id = cur.fetchone()[0]
+                
+                # Calculate balance
+                cur.execute('''
+                    SELECT COALESCE(SUM(amount_paid), 0)::float
+                    FROM payments
+                    WHERE student_id = %s AND term_id = %s
+                ''', (student_id, term_id))
+                total_paid = float(cur.fetchone()[0])
+                balance = term_amount - total_paid
+                
+                flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
+                return redirect(url_for('view_receipt', payment_id=payment_id))
+                
         except Exception as e:
-            flash(f'An error occurred: {str(e)}', 'danger')
-            app.logger.error(f"Payment error: {str(e)}", exc_info=True)
+            flash('An error occurred while processing your payment', 'danger')
+            app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
+            return redirect(url_for('add_payment'))
     
-    # GET request or error case
+    # GET request - show the form
     return render_template('add_payment.html',
                         students=get_students(),
                         terms=get_terms(),
                         today=today,
-                        form_data=request.form if request.method == 'POST' else None)
-
-def get_students():
-    with get_db_cursor() as cur:
-        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
-        return cur.fetchall()
-
-def get_terms():
-    with get_db_cursor() as cur:
-        cur.execute("SELECT id, name FROM terms ORDER BY name")
-        return cur.fetchall()                       
+                        form_data=request.form if request.method == 'POST' else None)        
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
