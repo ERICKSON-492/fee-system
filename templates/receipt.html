@@ -1,10 +1,185 @@
 {% extends "base.html" %}
 
-{% block title %}Receipt #{{ payment.receipt_number if payment and payment.receipt_number else 'N/A' }}{% endblock %}
+{% block title %}Receipt #{{ payment.receipt_number }}{% endblock %}
 
 {% block content %}
 <style>
-    /* [Previous CSS styles remain exactly the same] */
+    /* A5 size styling with clean layout */
+    @page {
+        size: A5;
+        margin: 10mm;
+    }
+    
+    body {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-size: 10pt;
+        color: #333;
+    }
+    
+    .receipt-container {
+        width: 148mm;
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 5mm;
+    }
+    
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 4mm;
+        padding-bottom: 3mm;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .receipt-logo {
+        height: 20mm;
+        margin-bottom: 2mm;
+    }
+    
+    .receipt-title {
+        font-weight: 600;
+        font-size: 12pt;
+        margin: 2mm 0;
+        color: #2c3e50;
+    }
+    
+    .receipt-subtitle {
+        font-size: 10pt;
+        font-weight: 500;
+        color: #7f8c8d;
+    }
+    
+    .receipt-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2mm;
+        margin-bottom: 6mm;
+        font-size: 9pt;
+    }
+    
+    .receipt-section {
+        margin-bottom: 6mm;
+    }
+    
+    .section-title {
+        font-weight: 600;
+        font-size: 9.5pt;
+        margin-bottom: 2mm;
+        color: #2c3e50;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 1mm;
+    }
+    
+    .receipt-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 4mm;
+        font-size: 9pt;
+    }
+    
+    .receipt-table th {
+        text-align: left;
+        padding: 2mm;
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    
+    .receipt-table td {
+        padding: 2mm;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .text-right {
+        text-align: right;
+    }
+    
+    .text-center {
+        text-align: center;
+    }
+    
+    .total-row {
+        font-weight: 600;
+        background-color: #f8f9fa;
+    }
+    
+    .balance-positive {
+        color: #e74c3c;
+    }
+    
+    .balance-zero {
+        color: #2ecc71;
+    }
+    
+    .status-badge {
+        padding: 1mm 2mm;
+        border-radius: 2mm;
+        font-size: 8pt;
+        font-weight: 500;
+    }
+    
+    .status-paid {
+        background-color: #d5f5e3;
+        color: #27ae60;
+    }
+    
+    .status-pending {
+        background-color: #fef9e7;
+        color: #f39c12;
+    }
+    
+    .verification-area {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4mm;
+        margin-top: 6mm;
+        padding-top: 4mm;
+        border-top: 1px solid #eee;
+    }
+    
+    .qr-code-container {
+        text-align: center;
+    }
+    
+    .qr-code {
+        width: 30mm;
+        height: 30mm;
+        margin: 0 auto;
+    }
+    
+    .signature-area {
+        text-align: center;
+    }
+    
+    .signature-line {
+        width: 50mm;
+        border-top: 1px solid #333;
+        margin: 0 auto 1mm;
+    }
+    
+    .receipt-footer {
+        text-align: center;
+        font-size: 8pt;
+        color: #95a5a6;
+        margin-top: 4mm;
+        padding-top: 2mm;
+        border-top: 1px solid #eee;
+    }
+    
+    @media print {
+        .no-print {
+            display: none;
+        }
+        
+        body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+    
+    @media screen {
+        .print-only {
+            display: none;
+        }
+    }
 </style>
 
 <div class="receipt-container">
@@ -14,110 +189,124 @@
         <img src="data:image/png;base64,{{ logo_base64 }}" class="receipt-logo" alt="School Logo">
         {% endif %}
         <div class="receipt-title">ST PAUL RONGO DAY SECONDARY SCHOOL</div>
-        <div class="receipt-subtitle">SCHOOL FEES PAYMENT RECEIPT</div>
+        <div class="receipt-subtitle">OFFICIAL FEE PAYMENT RECEIPT</div>
     </div>
     
     <!-- Transaction Details -->
-    <div class="receipt-details">
-        <div>
-            <strong>Receipt No:</strong> {{ payment.receipt_number if payment and payment.receipt_number else 'N/A' }}<br>
-            <strong>Date:</strong> {{ formatted_date if formatted_date else 'N/A' }}<br>
-            <strong>Time:</strong> {{ current_time.split(' ')[1] if current_time else 'N/A' }}
-        </div>
-        <div class="text-right">
-            <strong>Student:</strong> {{ payment.student_name if payment and payment.student_name else 'N/A' }}<br>
-            <strong>Adm No:</strong> {{ payment.admission_no if payment and payment.admission_no else 'N/A' }}<br>
-            <strong>Form:</strong> {{ payment.form if payment and payment.form else 'N/A' }}
+    <div class="receipt-section">
+        <div class="receipt-details">
+            <div>
+                <div><strong>Receipt No:</strong> {{ payment.receipt_number }}</div>
+                <div><strong>Date:</strong> {{ formatted_date }}</div>
+                <div><strong>Time:</strong> {{ current_time.split(' ')[1] }}</div>
+            </div>
+            <div>
+                <div><strong>Student:</strong> {{ payment.student_name }}</div>
+                <div><strong>Adm No:</strong> {{ payment.admission_no }}</div>
+                <div><strong>Class:</strong> {{ payment.form }}</div>
+            </div>
         </div>
     </div>
     
-    <!-- Payment Allocation Breakdown -->
-    <table class="receipt-table">
-        <thead>
-            <tr>
-                <th>Term</th>
-                <th class="text-right">Term Amount</th>
-                <th class="text-right">Allocated</th>
-                <th class="text-right">Running Total</th>
-                <th class="text-right">Balance</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for alloc in allocations %}
-            <tr>
-                <td>{{ alloc.term_name }}</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(alloc.term_amount) }}</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(alloc.allocated) }}</td>
-                <td class="text-right">{{ "KSh{:,.2f}".format(alloc.running_total) }}</td>
-                <td class="text-right {% if alloc.balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                    {{ "KSh{:,.2f}".format(alloc.balance) }}
-                </td>
-                <td>
-                    {% if alloc.is_paid %}
-                    <span class="badge bg-success">Paid</span>
-                    {% else %}
-                    <span class="badge bg-warning text-dark">Pending</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-            <tr class="balance-row">
-                <td colspan="2" class="text-right"><strong>Total Payment:</strong></td>
-                <td colspan="4" class="text-right">
-                    <strong>{{ "KSh{:,.2f}".format(amount_paid) if amount_paid is not none else "KSh0.00" }}</strong>
-                </td>
-            </tr>
-            <tr class="balance-row">
-                <td colspan="2" class="text-right"><strong>Cumulative Balance:</strong></td>
-                <td colspan="4" class="text-right {% if cumulative_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                    <strong>{{ "KSh{:,.2f}".format(cumulative_balance) if cumulative_balance is not none else "KSh0.00" }}</strong>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+    <!-- Payment Allocation Section -->
+    <div class="receipt-section">
+        <div class="section-title">PAYMENT ALLOCATION</div>
+        <table class="receipt-table">
+            <thead>
+                <tr>
+                    <th>Term</th>
+                    <th class="text-right">Fee Amount</th>
+                    <th class="text-right">Amount Paid</th>
+                    <th class="text-right">Balance</th>
+                    <th class="text-center">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alloc in allocations %}
+                <tr>
+                    <td>{{ alloc.term_name }}</td>
+                    <td class="text-right">{{ "KSh{:,.2f}".format(alloc.term_amount) }}</td>
+                    <td class="text-right">{{ "KSh{:,.2f}".format(alloc.allocated) }}</td>
+                    <td class="text-right {% if alloc.balance > 0 %}balance-positive{% else %}balance-zero{% endif %}">
+                        {{ "KSh{:,.2f}".format(alloc.balance) }}
+                    </td>
+                    <td class="text-center">
+                        <span class="status-badge {% if alloc.is_paid %}status-paid{% else %}status-pending{% endif %}">
+                            {% if alloc.is_paid %}PAID{% else %}PENDING{% endif %}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+                <tr class="total-row">
+                    <td colspan="2"><strong>TOTAL PAYMENT</strong></td>
+                    <td colspan="3" class="text-right">
+                        <strong>{{ "KSh{:,.2f}".format(amount_paid) }}</strong>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Balance Summary -->
+    <div class="receipt-section">
+        <div class="section-title">BALANCE SUMMARY</div>
+        <table class="receipt-table">
+            <tbody>
+                <tr>
+                    <td><strong>Cumulative Balance:</strong></td>
+                    <td class="text-right {% if cumulative_balance > 0 %}balance-positive{% else %}balance-zero{% endif %}">
+                        <strong>{{ "KSh{:,.2f}".format(cumulative_balance) }}</strong>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
     
     <!-- Verification Section -->
-    <div style="display: flex; justify-content: space-between; margin-top: 10mm;">
-        <div style="width: 40%;">
-            <div class="qr-code-container">
+    <div class="verification-area">
+        <div class="qr-code-container">
+            <div class="qr-code">
                 {% if qr_code %}
-                <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 100%;">
-                <div style="font-size: 7pt; margin-top: 1mm;">Scan to verify</div>
+                <img src="data:image/png;base64,{{ qr_code }}" alt="Payment Verification QR Code" style="width: 100%; height: auto;">
                 {% endif %}
             </div>
+            <div style="font-size: 8pt; margin-top: 1mm;">Scan to verify payment</div>
         </div>
-        <div style="width: 50%;">
-            <div class="signature-area">
-                <div class="signature-line"></div>
-                <div style="font-size: 8pt;">Authorized Signatory</div>
-            </div>
+        <div class="signature-area">
+            <div style="height: 20mm;"></div>
+            <div class="signature-line"></div>
+            <div style="font-size: 8pt;">Authorized Signatory</div>
+            <div style="font-size: 7pt; color: #95a5a6;">School Stamp</div>
         </div>
     </div>
     
     <!-- Footer -->
     <div class="receipt-footer">
-        This is an official computer-generated receipt from ST PAUL RONGO<br>
-        {{ current_time.split(' ')[0] if current_time else '' }} | Thank you for your payment
+        <div>This is an official computer-generated receipt</div>
+        <div>ST PAUL RONGO DAY SECONDARY SCHOOL</div>
+        <div>{{ current_time.split(' ')[0] }} | Thank you for your payment</div>
     </div>
 </div>
 
-<!-- Print Controls -->
-<div class="text-center no-print mt-3">
-    <button onclick="window.print()" class="btn btn-primary">
+<!-- Print Controls (visible only on screen) -->
+<div class="no-print" style="text-align: center; margin-top: 5mm;">
+    <button onclick="window.print()" class="btn btn-primary" style="padding: 5px 15px; font-size: 10pt;">
         <i class="bi bi-printer"></i> Print Receipt
     </button>
-    <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary ms-2">
+    <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary" style="padding: 5px 15px; font-size: 10pt; margin-left: 5mm;">
         <i class="bi bi-arrow-left"></i> Back to Payments
     </a>
 </div>
 
 <script>
     // Auto-print when page loads (optional)
-    window.onload = function() {
+    window.addEventListener('load', function() {
         setTimeout(function() {
-            window.print();
-        }, 500);
-    };
+            // Only auto-print if we're not showing print controls
+            if (document.querySelector('.no-print') && window.location.search.indexOf('print=true') > -1) {
+                window.print();
+            }
+        }, 300);
+    });
 </script>
 {% endblock %}
