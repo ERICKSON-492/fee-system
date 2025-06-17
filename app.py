@@ -534,53 +534,6 @@ def add_payment():
     return render_template('add_payment.html', students=students, terms=terms)
 
 
-@app.route('/payment/add', methods=['GET', 'POST'])
-@login_required
-def add_payment():
-    if request.method == 'POST':
-        student_id = request.form['student_id'].strip()
-        term_id = request.form['term_id'].strip()
-        amount_paid = request.form['amount_paid'].strip()
-        payment_date = request.form['payment_date'].strip()
-
-        try:
-            amount_paid = Decimal(amount_paid)
-            if amount_paid <= 0:
-                flash('Amount must be positive', 'danger')
-                return redirect(url_for('add_payment'))
-
-            with get_db_cursor(commit=True) as cur:
-                cur.execute('''
-                    INSERT INTO payments (student_id, term_id, amount_paid, payment_date, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ''', (student_id, term_id, amount_paid, payment_date))
-
-                # Recalculate balance for student
-                calculate_student_balance(student_id)
-
-                flash('Payment added successfully!', 'success')
-                return redirect(url_for('view_payments'))
-
-        except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number', 'danger')
-        except Exception as e:
-            logger.error(f"Error in add_payment: {str(e)}")
-            flash(f'Error adding payment: {str(e)}', 'danger')
-
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT id, name FROM students ORDER BY name')
-            students = cur.fetchall()
-
-            cur.execute('SELECT id, name FROM terms ORDER BY name')
-            terms = cur.fetchall()
-
-    except Exception as e:
-        logger.error(f"Error retrieving students or terms: {str(e)}")
-        flash('Error loading form data', 'danger')
-        return redirect(url_for('view_payments'))
-
-    return render_template('add_payment.html', students=students, terms=terms)
 
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
