@@ -425,15 +425,15 @@ def edit_term(id):
         except psycopg2.IntegrityError:
             flash('Term name must be unique!', 'danger')
         except Exception as e:
+            app.logger.error(f"Error updating term: {str(e)}")  # Corrected line
             flash(f'Error updating term: {str(e)}', 'danger')
-            pr 
+    
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
             term = cur.fetchone()
     except Exception as e:
         flash('Error retrieving term', 'danger')
-        print(f"Error retrieving term: {str(e)}")
         return redirect(url_for('view_terms'))
     
     if not term:
@@ -441,7 +441,6 @@ def edit_term(id):
         return redirect(url_for('view_terms'))
     
     return render_template('edit_term.html', term=term)
-
 @app.route('/term/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_term(id):
