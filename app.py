@@ -587,7 +587,7 @@ def view_payments():
 def add_payment():
     # Get terms for dropdown
     try:
-        with get_db_cursor(dict_cursor=True) as cur:
+        with get_db_cursor(dict_cursor=True) as cur:  # Ensure DictCursor is used here
             cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
             terms = cur.fetchall()
     except Exception as e:
@@ -606,7 +606,8 @@ def add_payment():
             flash('All fields are required', 'danger')
             return render_template('add_payment.html', 
                                 terms=terms,
-                                default_date=datetime.now().strftime('%Y-%m-%d'))
+                                default_date=datetime.now().strftime('%Y-%m-%d'),
+                                form_data=request.form)
 
         try:
             amount_paid = Decimal(amount_paid)
@@ -614,17 +615,22 @@ def add_payment():
                 flash('Amount must be positive', 'danger')
                 return render_template('add_payment.html', 
                                     terms=terms,
-                                    default_date=datetime.now().strftime('%Y-%m-%d'))
+                                    default_date=datetime.now().strftime('%Y-%m-%d'),
+                                    form_data=request.form)
             
             payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
             if payment_date > datetime.now().date():
                 flash('Payment date cannot be in the future', 'danger')
                 return render_template('add_payment.html', 
                                     terms=terms,
-                                    default_date=datetime.now().strftime('%Y-%m-%d'))
+                                    default_date=datetime.now().strftime('%Y-%m-%d'),
+                                    form_data=request.form)
             
             with get_db_cursor(commit=True) as cur:
-                # Find student by admission no or name (using DictCursor)
+                # Ensure DictCursor is used for this query
+                cur = conn.cursor(cursor_factory=extras.DictCursor) if not isinstance(cur, extras.DictCursor) else cur
+                
+                # Find student by admission no or name
                 cur.execute('''
                     SELECT id, name, admission_no FROM students 
                     WHERE admission_no = %s OR name ILIKE %s
@@ -642,7 +648,10 @@ def add_payment():
                                         default_date=datetime.now().strftime('%Y-%m-%d'),
                                         form_data=request.form)
                 
-                student_id = student['id']  # Accessing as dictionary
+                # Access as dictionary
+                student_id = student['id']
+                student_name = student['name']
+                admission_no = student['admission_no']
 
                 # Validate term exists
                 cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
@@ -670,7 +679,7 @@ def add_payment():
                 # Update student balance
                 calculate_student_balance(student_id)
                 
-                flash(f'Payment of KSh {amount_paid:,.2f} recorded for {student["name"]} ({student["admission_no"]})', 'success')
+                flash(f'Payment of KSh {amount_paid:,.2f} recorded for {student_name} ({admission_no})', 'success')
                 return redirect(url_for('view_receipt', payment_id=payment_id))
                 
         except ValueError as e:
@@ -683,16 +692,12 @@ def add_payment():
         except Exception as e:
             logger.error(f"Error adding payment: {str(e)}", exc_info=True)
             flash(f'Error adding payment: {str(e)}', 'danger')
-            return render_template('add_payment.html', 
-                                terms=terms,
-                                default_date=datetime.now().strftime('%Y-%m-%d'),
-                                form_data=request.form)
+            
     
-
-    
-    
-    
-    
+    # GET request
+    return render_template('add_payment.html', 
+                         terms=terms,
+                         default_date=datetime.now().strftime('%Y-%m-%d'))   
     
     return render_template('add_payment.html', 
                          
