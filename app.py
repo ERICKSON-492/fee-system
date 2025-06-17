@@ -467,14 +467,26 @@ def view_payments():
         app.logger.error(f"Error in view_payments: {str(e)}")
         return redirect(url_for('dashboard'))
 def get_students():
-    with get_db_cursor() as cur:
-        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
-        return cur.fetchall()
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+            students = cur.fetchall()
+            app.logger.debug(f"Retrieved {len(students)} students from database")
+            return students
+    except Exception as e:
+        app.logger.error(f"Error fetching students: {str(e)}")
+        return []
 
 def get_terms():
-    with get_db_cursor() as cur:
-        cur.execute("SELECT id, name FROM terms ORDER BY name")
-        return cur.fetchall()
+    try:
+        with get_db_cursor() as cur:
+            cur.execute("SELECT id, name FROM terms ORDER BY name")
+            terms = cur.fetchall()
+            app.logger.debug(f"Retrieved {len(terms)} terms from database")
+            return terms
+    except Exception as e:
+        app.logger.error(f"Error fetching terms: {str(e)}")
+        return []
         
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
