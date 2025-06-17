@@ -88,14 +88,27 @@
                 <tbody>
                     {% for payment in payments %}
                     <tr>
-                        <td class="fw-bold">{{ payment.receipt_number }}</td>
-                        <td>{{ payment.admission_no }}</td>
-                        <td>{{ payment.student_name }}</td>
-                        <td>{{ payment.term_name }}</td>
-                        <td class="text-end">{{ "KSh{:,.2f}".format(payment.amount_paid) }}</td>
-                        <td>{{ payment.payment_date.strftime('%d/%m/%Y') }}</td>
+                        <td class="fw-bold">{{ payment.receipt_number or 'N/A' }}</td>
+                        <td>{{ payment.admission_no or 'N/A' }}</td>
+                        <td>{{ payment.student_name or 'N/A' }}</td>
+                        <td>{{ payment.term_name or 'N/A' }}</td>
+                        <td class="text-end">
+                            {% if payment.amount_paid is defined and payment.amount_paid is not none %}
+                                KSh{{ "%0.2f"|format(payment.amount_paid|float) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if payment.payment_date %}
+                                {{ payment.payment_date.strftime('%d/%m/%Y') }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="btn-group btn-group-sm">
+                                {% if payment.id %}
                                 <a href="{{ url_for('view_receipt', payment_id=payment.id) }}" 
                                    class="btn btn-outline-success" title="Receipt">
                                     <i class="bi bi-receipt"></i>
@@ -110,6 +123,7 @@
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
@@ -132,8 +146,7 @@
             </table>
         </div>
         
-        {# Safe pagination handling #}
-        {% if payments and pagination is defined %}
+        {% if payments and pagination is defined and pagination.pages > 1 %}
         <nav aria-label="Page navigation">
             <ul class="pagination justify-content-center mt-4">
                 {% if pagination.has_prev %}
