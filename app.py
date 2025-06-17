@@ -501,128 +501,62 @@ def view_payments():
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
-    today = datetime.now().date().isoformat()
-    students = get_students()
-    terms = get_terms()
-    
     if request.method == 'POST':
         try:
-            input_method = request.form.get('student_input_method', 'select')
-            admission_no = ''
-            
-            if input_method == 'manual':
-                admission_no = request.form.get('manual_admission', '').strip().upper()
-                if not admission_no:
-                    flash('Please enter an admission number', 'danger')
-                    return render_template('add_payment.html',
-                                        students=students,
-                                        terms=terms,
-                                        today=today,
-                                        form_data=request.form)
-            else:
-                admission_no = request.form.get('admission_no', '').strip().upper()
-                if not admission_no:
-                    flash('Please select a student', 'danger')
-                    return render_template('add_payment.html',
-                                        students=students,
-                                        terms=terms,
-                                        today=today,
-                                        form_data=request.form)
-
-            term_id = request.form.get('term_id')
-            amount_paid = request.form.get('amount_paid')
-            payment_date = request.form.get('payment_date', today)
-            
-            if not all([term_id, amount_paid, payment_date]):
-                flash('All fields are required', 'danger')
-                return render_template('add_payment.html',
-                                    students=students,
-                                    terms=terms,
-                                    today=today,
-                                    form_data=request.form)
-            
-            try:
-                amount_paid = Decimal(amount_paid)
-                if amount_paid <= Decimal('0'):
-                    flash('Amount must be greater than zero', 'danger')
-                    return render_template('add_payment.html',
-                                        students=students,
-                                        terms=terms,
-                                        today=today,
-                                        form_data=request.form)
-            except (ValueError, InvalidOperation):
-                flash('Please enter a valid amount', 'danger')
-                return render_template('add_payment.html',
-                                    students=students,
-                                    terms=terms,
-                                    today=today,
-                                    form_data=request.form)
-            
-            receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
+            student_id = request.form['student_id']
+            term_id = request.form['term_id']
+            amount_paid = Decimal(request.form['amount_paid'])
             
             with get_db_cursor(commit=True) as cur:
-                cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
-                student = cur.fetchone()
+                # Get term amount
+                cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
+                term_amount = Decimal(str(cur.fetchone()[0]))
                 
-                if not student:
-                    flash(f'Student {admission_no} not found', 'danger')
-                    session['pending_payment'] = {
-                        'admission_no': admission_no,
-                        'term_id': term_id,
-                        'amount_paid': str(amount_paid),
-                        'payment_date': payment_date,
-                        'receipt_number': receipt_number
-                    }
-                    return redirect(url_for('add_student_from_payment'))
+                # Get current balance
+                cur.execute('''
+                    SELECT current_balance FROM student_balances 
+                    WHERE student_id = %s
+                ''', (student_id,))
+                balance_row = cur.fetchone()
+                current_balance = Decimal(str(balance_row[0])) if balance_row else Decimal('0')
                 
-                student_id = student[0]
+                # Calculate new balance
+                new_balance = current_balance + amount_paid - term_amount
                 
-                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
-                term = cur.fetchone()
+                # Update balance record
+                if balance_row:
+                    cur.execute('''
+                        UPDATE student_balances 
+                        SET current_balance = %s 
+                        WHERE student_id = %s
+                    ''', (new_balance, student_id))
+                else:
+                    cur.execute('''
+                        INSERT INTO student_balances (student_id, current_balance)
+                        VALUES (%s, %s)
+                    ''', (student_id, new_balance))
                 
-                if not term:
-                    flash('Invalid term selected', 'danger')
-                    return redirect(url_for('add_payment'))
-                
-                term_id, term_amount = term
-                term_amount = Decimal(str(term_amount))
-                
+                # Record payment
+                receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 cur.execute('''
                     INSERT INTO payments 
-                    (student_id, term_id, amount_paid, payment_date, receipt_number)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+                    (student_id, term_id, amount_paid, receipt_number)
+                    VALUES (%s, %s, %s, %s)
+                ''', (student_id, term_id, amount_paid, receipt_number))
                 
-                payment_id = cur.fetchone()[0]
-                
-                cur.execute('''
-                    SELECT COALESCE(SUM(amount_paid), 0)
-                    FROM payments
-                    WHERE student_id = %s AND term_id = %s
-                ''', (student_id, term_id))
-                total_paid_result = cur.fetchone()[0]
-                total_paid = Decimal(str(total_paid_result)) if total_paid_result else Decimal('0')
-                
-                balance = term_amount - total_paid
-                
-                flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
-                return redirect(url_for('view_receipt', payment_id=payment_id))
+                # Return appropriate message
+                if new_balance >= 0:
+                    flash(f'Payment recorded! {amount_paid:.2f} paid. New balance: {new_balance:.2f} (credit)', 'success')
+                else:
+                    flash(f'Payment recorded! {amount_paid:.2f} paid. Balance due: {-new_balance:.2f}', 'success')
+                    
+                return redirect(url_for('view_payments'))
                 
         except Exception as e:
-            flash('An error occurred while processing your payment', 'danger')
-            app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
-            return render_template('add_payment.html',
-                                students=students,
-                                terms=terms,
-                                today=today,
-                                form_data=request.form)
+            app.logger.error(f"Payment error: {str(e)}")
+            flash('Error processing payment', 'danger')
     
-    return render_template('add_payment.html',
-                        students=students,
-                        terms=terms,
-                        today=today)
-
+    # Rest of your form handling code...
 @app.route('/student/add-from-payment', methods=['GET', 'POST'])
 @login_required
 def add_student_from_payment():
