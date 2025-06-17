@@ -780,14 +780,21 @@ def view_receipt(payment_id):
     except Exception as e:
         flash('Error generating receipt', 'danger')
         app.logger.error(f"Error in view_receipt: {str(e)}", exc_info=True)
-        return redirect(url_for('view_payments'))    
+        return redirect(url_for('view_payments')) 
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
+    current_term_id = None  # Initialize variable
+    student_balances = {}  # Initialize variable
+    
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get current term ID
-            cur.execute("SELECT id FROM terms WHERE is_current = TRUE")
+            # Get most recent term as fallback if is_current column doesn't exist
+            cur.execute('''
+                SELECT id FROM terms 
+                ORDER BY end_date DESC 
+                LIMIT 1
+            ''')
             current_term = cur.fetchone()
             current_term_id = current_term['id'] if current_term else None
             
@@ -798,20 +805,23 @@ def outstanding_report():
                     s.name, 
                     s.admission_no,
                     t.name AS term_name,
-                    tb.fee_amount AS term_fee,
-                    tb.paid_amount AS term_paid,
-                    (tb.fee_amount - tb.paid_amount) AS term_balance,
+                    t.id AS term_id,
+                    t.fee_amount AS term_fee,
+                    COALESCE(SUM(p.amount), 0) AS term_paid,
+                    (t.fee_amount - COALESCE(SUM(p.amount), 0)) AS term_balance,
                     (SELECT SUM(fee_amount) FROM terms) AS total_fees,
-                    (SELECT SUM(paid_amount) FROM term_balances WHERE student_id = s.id) AS total_paid,
-                    (SELECT SUM(fee_amount - paid_amount) FROM term_balances WHERE student_id = s.id) AS total_balance
+                    (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id) AS total_paid,
+                    ((SELECT SUM(fee_amount) FROM terms) - 
+                     (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE student_id = s.id)) AS total_balance
                 FROM students s
-                JOIN term_balances tb ON s.id = tb.student_id
-                JOIN terms t ON tb.term_id = t.id
-                WHERE tb.fee_amount > tb.paid_amount
+                CROSS JOIN terms t
+                LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
+                GROUP BY s.id, t.id, t.name, t.fee_amount
+                HAVING (t.fee_amount - COALESCE(SUM(p.amount), 0)) > 0
                 ORDER BY 
-                    CASE WHEN tb.term_id = %s THEN 0 ELSE 1 END,  -- Current term first
-                    t.start_date DESC,
-                    (tb.fee_amount - tb.paid_amount) DESC
+                    CASE WHEN t.id = %s THEN 0 ELSE 1 END,  -- Current term first if available
+                    t.end_date DESC,
+                    (t.fee_amount - COALESCE(SUM(p.amount), 0)) DESC
             ''', (current_term_id,))
             
             report_data = cur.fetchall()
@@ -829,6 +839,7 @@ def outstanding_report():
                     }
                 student_balances[row['id']]['terms'].append({
                     'term_name': row['term_name'],
+                    'term_id': row['term_id'],
                     'term_fee': row['term_fee'],
                     'term_paid': row['term_paid'],
                     'term_balance': row['term_balance']
@@ -839,13 +850,12 @@ def outstanding_report():
     except Exception as e:
         flash('Error generating report: ' + str(e), 'danger')
         print(f"Error in outstanding_report: {str(e)}")
-        student_balances = {}
         current_datetime = datetime.now()
     
     return render_template('outstanding_report.html', 
                          student_balances=student_balances,
                          current_term_id=current_term_id,
-                         current_datetime=current_datetime)
+                         current_datetime=current_datetime)        
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
