@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Term{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Edit Term</h2>
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('edit_term', id=term.id) }}">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Term Name</label>
+                    <input type="text" class="form-control" id="name" name="name" 
+                           value="{{ term.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label for="amount" class="form-label">Amount (KSh)</label>
+                    <input type="number" step="0.01" class="form-control" id="amount" 
+                           name="amount" value="{{ term.amount }}" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Term</button>
+                <a href="{{ url_for('view_terms') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
