@@ -469,96 +469,73 @@ def view_payments():
 @login_required
 def add_payment():
     if request.method == 'POST':
-        # Handle form submission
-        admission_no = request.form.get('admission_no', '').strip().upper()
-        term_id = request.form.get('term_id', '').strip()
-        amount_paid = request.form.get('amount_paid', '').strip()
-        payment_date = request.form.get('payment_date', '').strip()
-        
-        # Validation
-        if not all([admission_no, term_id, amount_paid, payment_date]):
-            flash('All fields are required', 'danger')
-            return redirect(url_for('add_payment'))
-        
         try:
-            amount_paid = float(amount_paid)
-            if amount_paid <= 0:
-                flash('Amount must be positive', 'danger')
+            # Get form data
+            admission_no = request.form.get('admission_no', '').strip().upper()
+            manual_admission = request.form.get('manual_admission', '').strip().upper()
+            term_id = request.form.get('term_id', '').strip()
+            amount_paid = request.form.get('amount_paid', '').strip()
+            payment_date = request.form.get('payment_date', '').strip()
+            
+            # Use manual admission if provided
+            if manual_admission:
+                admission_no = manual_admission
+            
+            # Validate required fields
+            if not all([admission_no, term_id, amount_paid, payment_date]):
+                flash('All fields are required', 'danger')
+                return redirect(url_for('add_payment'))
+            
+            # Validate amount
+            try:
+                amount_paid = float(amount_paid)
+                if amount_paid <= 0:
+                    flash('Amount must be greater than zero', 'danger')
+                    return redirect(url_for('add_payment'))
+            except ValueError:
+                flash('Please enter a valid amount', 'danger')
                 return redirect(url_for('add_payment'))
             
             # Generate secure receipt number
             receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
             
             with get_db_cursor(commit=True) as cur:
-                # Find student
+                # Verify student exists or create if not found
                 cur.execute('SELECT id FROM students WHERE admission_no = %s', (admission_no,))
                 student = cur.fetchone()
                 
                 if not student:
-                    flash(f'Student with admission number {admission_no} not found', 'danger')
-                    return redirect(url_for('add_payment'))
+                    # Student not found - prompt to create new student
+                    flash(f'Student {admission_no} not found. Please add student details.', 'warning')
+                    session['pending_payment'] = {
+                        'admission_no': admission_no,
+                        'term_id': term_id,
+                        'amount_paid': amount_paid,
+                        'payment_date': payment_date,
+                        'receipt_number': receipt_number
+                    }
+                    return redirect(url_for('add_student_from_payment'))
                 
                 student_id = student[0]
                 
-                # Verify term exists and get term amount
-                cur.execute('SELECT id, amount FROM terms WHERE id = %s', (term_id,))
-                term = cur.fetchone()
-                
-                if not term:
-                    flash('Invalid term selected', 'danger')
-                    return redirect(url_for('add_payment'))
-                
-                term_id, term_amount = term
-                
-                # Record payment
-                cur.execute('''
-                    INSERT INTO payments 
-                    (student_id, term_id, amount_paid, payment_date, receipt_number)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-                
-                payment_id = cur.fetchone()[0]
-                
-                # Calculate new balance
-                cur.execute('''
-                    SELECT COALESCE(SUM(amount_paid), 0)::float
-                    FROM payments
-                    WHERE student_id = %s AND term_id = %s
-                ''', (student_id, term_id))
-                total_paid = float(cur.fetchone()[0])
-                balance = term_amount - total_paid
-                
-                flash(f'Payment recorded! Receipt: {receipt_number}. Balance: KSh{balance:,.2f}', 'success')
-                return redirect(url_for('view_receipt', payment_id=payment_id))
-                
-        except ValueError:
-            flash('Amount must be a valid number', 'danger')
-            return redirect(url_for('add_payment'))
+                # Rest of payment processing...
+                # ... [keep the existing payment processing code]
+
         except Exception as e:
-            flash('Payment failed - please try again', 'danger')
-            app.logger.error(f"Payment error: {str(e)}", exc_info=True)
-            return redirect(url_for('add_payment'))
+            flash('An error occurred while processing your payment', 'danger')
+            app.logger.error(f"Payment processing error: {str(e)}", exc_info=True)
     
-    else:
-        # Handle GET request - show the form
-        try:
-            with get_db_cursor(dict_cursor=True) as cur:
-                cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
-                students = cur.fetchall()
-                
-                cur.execute("SELECT id, name FROM terms ORDER BY name")
-                terms = cur.fetchall()
-                
-            return render_template('add_payment.html', 
-                                students=students,
-                                terms=terms,
-                                today=datetime.now().date())
-            
-        except Exception as e:
-            flash('Error loading payment form', 'danger')
-            app.logger.error(f"Error in add_payment (GET): {str(e)}")
-            return redirect(url_for('view_payments'))        
+    # GET request - show the form
+    with get_db_cursor(dict_cursor=True) as cur:
+        cur.execute("SELECT id, name, admission_no FROM students ORDER BY name")
+        students = cur.fetchall()
+        cur.execute("SELECT id, name FROM terms ORDER BY name")
+        terms = cur.fetchall()
+    
+    return render_template('add_payment.html',
+                        students=students,
+                        terms=terms,
+                        today=datetime.now().date())       
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
