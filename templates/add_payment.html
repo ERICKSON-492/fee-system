@@ -1,79 +1,65 @@
 {% extends "base.html" %}
 
-{% block header %}Add Payment{% endblock %}
+{% block title %}Add Payment{% endblock %}
 
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('add_payment') }}">
-            <div class="mb-3">
-                <label for="student_id" class="form-label">Student</label>
-                <select class="form-select" id="student_id" name="student_id" required>
-                    <option value="" selected disabled>Select a student</option>
-                    {% for student in students %}
-                    <option value="{{ student.id }}">{{ student.name }} ({{ student.admission_no }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="mb-3">
-                <label for="term_id" class="form-label">Term</label>
-                <select class="form-select" id="term_id" name="term_id" required>
-                    <option value="" selected disabled>Select a term</option>
-                    {% for term in terms %}
-                    <option value="{{ term.id }}">{{ term.name }} - KSh {{ term.amount }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="mb-3">
-                <label for="amount_paid" class="form-label">Amount Paid (KSh)</label>
-                <input type="number" step="0.01" min="0" class="form-control" id="amount_paid" name="amount_paid" required>
-            </div>
-            
-            <div class="mb-3">
-                <label for="payment_date" class="form-label">Payment Date</label>
-                <input type="date" class="form-control" id="payment_date" name="payment_date" 
-                       value="{{ default_date }}" max="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
-            </div>
-            
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <a href="{{ url_for('view_payments') }}" class="btn btn-secondary me-md-2">
-                    <i class="bi bi-x-circle"></i> Cancel
-                </a>
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-cash-coin"></i> Add Payment
-                </button>
-            </div>
-        </form>
+<div class="container mt-4">
+    <h2>Add Payment</h2>
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('add_payment') }}">
+                <div class="mb-3">
+                    <label for="student_identifier" class="form-label">Student (Admission No or Name)</label>
+                    <input type="text" class="form-control" id="student_identifier" 
+                           name="student_identifier" required
+                           placeholder="Enter admission number or student name">
+                    <small class="text-muted">Start typing to search for students</small>
+                </div>
+                <div class="mb-3">
+                    <label for="term_id" class="form-label">Term</label>
+                    <select class="form-select" id="term_id" name="term_id" required>
+                        <option value="">Select a term</option>
+                        {% for term in terms %}
+                            <option value="{{ term.id }}">{{ term.name }} - KSh {{ term.amount }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="amount_paid" class="form-label">Amount Paid (KSh)</label>
+                    <input type="number" step="0.01" class="form-control" id="amount_paid" 
+                           name="amount_paid" required>
+                </div>
+                <div class="mb-3">
+                    <label for="payment_date" class="form-label">Payment Date</label>
+                    <input type="date" class="form-control" id="payment_date" 
+                           name="payment_date" value="{{ default_date }}" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Record Payment</button>
+                <a href="{{ url_for('view_payments') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
+<!-- Add JavaScript for student search functionality -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Client-side validation
-    const form = document.querySelector('form');
-    form.addEventListener('submit', function(e) {
-        const amount = parseFloat(document.getElementById('amount_paid').value);
-        if (amount <= 0) {
-            e.preventDefault();
-            alert('Amount must be greater than 0');
-            return false;
+    const studentInput = document.getElementById('student_identifier');
+    
+    // You can implement autocomplete here using a library like jQuery UI
+    // or fetch students from an API endpoint as the user types
+    
+    // Example with fetch:
+    studentInput.addEventListener('input', function() {
+        const searchTerm = this.value;
+        if (searchTerm.length > 2) {
+            // You would need to create an API endpoint for student search
+            // fetch(`/api/students/search?q=${searchTerm}`)
+            //     .then(response => response.json())
+            //     .then(data => {
+            //         // Update UI with search results
+            //     });
         }
-        
-        const paymentDate = new Date(document.getElementById('payment_date').value);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        if (paymentDate > today) {
-            e.preventDefault();
-            alert('Payment date cannot be in the future');
-            return false;
-        }
-        
-        return true;
     });
 });
 </script>
