@@ -465,7 +465,7 @@ def view_payments():
     except Exception as e:
         flash('Error retrieving payment records', 'danger')
         app.logger.error(f"Error in view_payments: {str(e)}")
-        return redirect(url_for('dashboard')
+        return redirect(url_for('dashboard'))
  @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
