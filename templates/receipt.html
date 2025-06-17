@@ -2,12 +2,6 @@
 
 {% block title %}Receipt #{{ payment.receipt_number if payment and payment.receipt_number else 'N/A' }}{% endblock %}
 
-{% block extra_css %}
-<style>
-    /* [Previous CSS remains exactly the same] */
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="receipt-container">
     <!-- Header Section -->
@@ -23,12 +17,7 @@
     <div class="receipt-details">
         <div>
             <strong>Receipt No:</strong> {{ payment.receipt_number if payment and payment.receipt_number else 'N/A' }}<br>
-            <strong>Date:</strong> 
-            {% if payment and payment.payment_date %}
-                {{ payment.payment_date.strftime('%d/%m/%Y') }}
-            {% else %}
-                N/A
-            {% endif %}<br>
+            <strong>Date:</strong> {{ formatted_date if formatted_date else 'N/A' }}<br>
             <strong>Time:</strong> {{ current_time.split(' ')[1] if current_time else 'N/A' }}
         </div>
         <div class="text-right">
@@ -50,42 +39,77 @@
             <tr>
                 <td>Payment for {{ payment.term_name if payment and payment.term_name else 'Term Payment' }}</td>
                 <td class="text-right">
-                    {% if payment and payment.amount_paid is not none %}
-                        KSh{{ "{:,.2f}".format(payment.amount_paid) }}
-                    {% else %}
-                        KSh0.00
-                    {% endif %}
+                    {{ "KSh{:,.2f}".format(amount_paid) if amount_paid is not none else "KSh0.00" }}
                 </td>
             </tr>
             <tr>
-                <td class="text-right"><strong>Total Paid:</strong></td>
+                <td class="text-right"><strong>Total Paid (Term):</strong></td>
                 <td class="text-right">
                     <strong>
-                        {% if payment and payment.amount_paid is not none %}
-                            KSh{{ "{:,.2f}".format(payment.amount_paid) }}
-                        {% else %}
-                            KSh0.00
-                        {% endif %}
+                        {{ "KSh{:,.2f}".format(term_total_paid) if term_total_paid is not none else "KSh0.00" }}
+                    </strong>
+                </td>
+            </tr>
+            <tr>
+                <td class="text-right"><strong>Term Balance:</strong></td>
+                <td class="text-right">
+                    <strong>
+                        {{ "KSh{:,.2f}".format(term_balance) if term_balance is not none else "KSh0.00" }}
                     </strong>
                 </td>
             </tr>
             <tr class="balance-row">
-                <td class="text-right"><strong>Balance:</strong></td>
+                <td class="text-right"><strong>Cumulative Balance:</strong></td>
                 <td class="text-right">
                     <strong>
-                        {% if outstanding_balance is not none %}
-                            KSh{{ "{:,.2f}".format(outstanding_balance) }}
-                        {% else %}
-                            KSh0.00
-                        {% endif %}
+                        {{ "KSh{:,.2f}".format(cumulative_balance) if cumulative_balance is not none else "KSh0.00" }}
                     </strong>
                 </td>
             </tr>
         </tbody>
     </table>
     
-    <!-- [Rest of the template remains the same] -->
+    <!-- Verification Section -->
+    <div class="row">
+        <div class="col-6 text-center">
+            <div class="qr-code-container">
+                {% if qr_code %}
+                <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code" style="width: 100%;">
+                <div style="font-size: 8pt; margin-top: 1mm;">Scan to verify</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-6">
+            <div class="signature-area">
+                <div class="signature-line"></div>
+                <div style="font-size: 9pt;">Authorized Signatory</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="receipt-footer">
+        This is an official computer-generated receipt from ST PAUL RONGO<br>
+        {{ current_time.split(' ')[0] if current_time else '' }} | Thank you for your payment
+    </div>
 </div>
 
-<!-- [Print controls remain the same] -->
+<!-- Print Controls -->
+<div class="text-center no-print mt-3">
+    <button onclick="window.print()" class="btn btn-primary">
+        <i class="bi bi-printer"></i> Print Receipt
+    </button>
+    <a href="{{ url_for('view_payments') }}" class="btn btn-outline-secondary ms-2">
+        <i class="bi bi-arrow-left"></i> Back to Payments
+    </a>
+</div>
+
+<script>
+    // Auto-print when page loads (optional)
+    window.onload = function() {
+        setTimeout(function() {
+            window.print();
+        }, 500);
+    };
+</script>
 {% endblock %}
