@@ -156,7 +156,31 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+        # In the outstanding_report route, replace the query with:
+cur.execute('''
+    SELECT 
+        s.id, 
+        s.name, 
+        s.admission_no,
+        t.name AS term_name,
+        t.id AS term_id,
+        t.amount AS term_fee,
+        COALESCE(SUM(p.amount_paid), 0) AS term_paid,
+        (t.amount - COALESCE(SUM(p.amount_paid), 0)) AS term_balance,
+        (SELECT SUM(amount) FROM terms) AS total_fees,
+        (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = s.id) AS total_paid,
+        ((SELECT SUM(amount) FROM terms) - 
+         (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = s.id)) AS total_balance
+    FROM students s
+    CROSS JOIN terms t
+    LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
+    GROUP BY s.id, t.id, t.name, t.amount
+    HAVING (t.amount - COALESCE(SUM(p.amount_paid), 0)) > 0
+    ORDER BY 
+        CASE WHEN t.id = %s THEN 0 ELSE 1 END,
+        t.created_at DESC,
+        (t.amount - COALESCE(SUM(p.amount_paid), 0)) DESC
+''', (current_term_id,))
         cur.execute("SELECT 1 FROM users WHERE username = 'admin'")
         if not cur.fetchone():
             hashed_password = generate_password_hash('admin')
