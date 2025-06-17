@@ -739,16 +739,28 @@ def delete_payment(id):
         print(f"Error in delete_payment: {str(e)}")
     
     return redirect(url_for('view_payments'))
-
 @app.route('/receipt/<int:payment_id>')
 @login_required
 def view_receipt(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # First verify the payment exists and get term_id
+            # Get all payment details in a single query
             cur.execute('''
-                SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date, p.receipt_number
+                SELECT 
+                    p.id, 
+                    p.student_id, 
+                    p.term_id, 
+                    p.amount_paid, 
+                    p.payment_date, 
+                    p.receipt_number,
+                    s.name AS student_name, 
+                    s.admission_no, 
+                    s.form,
+                    t.name AS term_name, 
+                    t.amount AS term_amount
                 FROM payments p
+                JOIN students s ON p.student_id = s.id
+                JOIN terms t ON p.term_id = t.id
                 WHERE p.id = %s
             ''', (payment_id,))
             payment = cur.fetchone()
@@ -756,37 +768,22 @@ def view_receipt(payment_id):
             if not payment:
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
-            
-            # Now get all the related information
-            cur.execute('''
-                SELECT 
-                    s.name AS student_name, 
-                    s.admission_no, 
-                    s.form,
-                    t.name AS term_name, 
-                    t.amount AS term_amount
-                FROM students s
-                JOIN terms t ON t.id = %s
-                WHERE s.id = %s
-            ''', (payment['term_id'], payment['student_id']))
-            details = cur.fetchone()
-            
-            if not details:
-                flash('Student or term information not found', 'danger')
-                return redirect(url_for('view_payments'))
-            
-            # Combine the payment and details
-            payment.update(details)
-            
-            term_amount = Decimal(str(payment['term_amount']))
-            amount_paid = Decimal(str(payment['amount_paid']))
+
+            # Convert to a regular dictionary if needed
+            if hasattr(payment, 'items'):  # already a dict-like object
+                payment_dict = dict(payment)
+            else:
+                payment_dict = {key: payment[key] for key in payment._fields}
+
+            term_amount = Decimal(str(payment_dict['term_amount']))
+            amount_paid = Decimal(str(payment_dict['amount_paid']))
             
             # Calculate total paid and balance
             cur.execute('''
                 SELECT COALESCE(SUM(amount_paid), 0)
                 FROM payments
                 WHERE student_id = %s AND term_id = %s
-            ''', (payment['student_id'], payment['term_id']))
+            ''', (payment_dict['student_id'], payment_dict['term_id']))
             total_paid_result = cur.fetchone()[0]
             total_paid = Decimal(str(total_paid_result)) if total_paid_result else Decimal('0')
             
@@ -794,10 +791,10 @@ def view_receipt(payment_id):
             
             # Generate QR code
             qr_data = f"""
-            Receipt: {payment['receipt_number']}
-            Student: {payment['student_name']} ({payment['admission_no']})
+            Receipt: {payment_dict['receipt_number']}
+            Student: {payment_dict['student_name']} ({payment_dict['admission_no']})
             Amount: {float(amount_paid):.2f}
-            Date: {payment['payment_date']}
+            Date: {payment_dict['payment_date']}
             """
             qr_img = qrcode.make(qr_data)
             qr_buffer = BytesIO()
@@ -812,7 +809,7 @@ def view_receipt(payment_id):
         return redirect(url_for('view_payments'))
     
     return render_template('receipt.html',
-                        payment=payment,
+                        payment=payment_dict,
                         total_paid=float(total_paid),
                         outstanding_balance=float(outstanding_balance),
                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
