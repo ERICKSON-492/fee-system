@@ -512,45 +512,57 @@ def view_payments():
         logger.error(f"Error in view_payments: {str(e)}")
         flash('Error retrieving payment records', 'danger')
         return redirect(url_for('dashboard'))
-
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
     if request.method == 'POST':
-        # Validate required fields
         required_fields = ['student_id', 'term_id', 'amount_paid']
         if not all(field in request.form for field in required_fields):
             flash('All fields are required', 'danger')
             return redirect(url_for('add_payment'))
-            
+
         try:
             student_id = int(request.form['student_id'])
             term_id = int(request.form['term_id'])
             amount_paid = Decimal(request.form['amount_paid'])
-            payment_date = request.form.get('payment_date') or datetime.now().date()
-            
-            # Validate amount
+
+            # Handle date parsing
+            payment_date_str = request.form.get('payment_date')
+            if payment_date_str:
+                try:
+                    payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Invalid date format', 'danger')
+                    return redirect(url_for('add_payment'))
+            else:
+                payment_date = datetime.now().date()
+
             if amount_paid <= 0:
                 flash('Payment amount must be positive', 'danger')
                 return redirect(url_for('add_payment'))
-                
-            # Validate student and term exist
+
             with get_db_cursor(dict_cursor=True) as cur:
                 cur.execute('SELECT 1 FROM students WHERE id = %s', (student_id,))
                 if not cur.fetchone():
                     flash('Invalid student selected', 'danger')
                     return redirect(url_for('add_payment'))
-                    
+
                 cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
                 term = cur.fetchone()
                 if not term:
                     flash('Invalid term selected', 'danger')
                     return redirect(url_for('add_payment'))
-                    
-                term_amount = Decimal(str(term['amount']))
-                
-            # Rest of your payment processing logic...
-            
+
+            # Save payment
+            with get_db_cursor() as cur:
+                cur.execute('''
+                    INSERT INTO payments (student_id, term_id, amount_paid, payment_date)
+                    VALUES (%s, %s, %s, %s)
+                ''', (student_id, term_id, amount_paid, payment_date))
+
+            flash('Payment added successfully', 'success')
+            return redirect(url_for('add_payment'))
+
         except (ValueError, InvalidOperation):
             flash('Invalid amount format', 'danger')
             return redirect(url_for('add_payment'))
@@ -558,11 +570,11 @@ def add_payment():
             logger.error(f"Payment processing error: {str(e)}", exc_info=True)
             flash('Error processing payment', 'danger')
             return redirect(url_for('add_payment'))
-    
-    # GET request handling remains the same
+
     students = get_students()
     terms = get_terms()
     return render_template('add_payment.html', students=students, terms=terms)
+
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
