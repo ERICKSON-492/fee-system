@@ -213,45 +213,40 @@ def init_db():
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', 
                        ('admin', hashed_password))
 def calculate_student_balance(student_id):
-    """Calculate balances with carry-over support"""
+    """Calculate and update a student's balance"""
     with get_db_cursor(commit=True) as cur:
         # Get all terms
-        cur.execute('''
-            SELECT t.id, t.amount, COALESCE(tao.application_order, 999) as app_order
-            FROM terms t
-            LEFT JOIN term_application_order tao ON t.id = tao.term_id
-            ORDER BY app_order, t.id
-        ''')
+        cur.execute('SELECT id, amount FROM terms ORDER BY id')
         terms = cur.fetchall()
         
         total_balance = Decimal('0')
         
-        # Clear and recalculate term balances
-        cur.execute('DELETE FROM term_balances WHERE student_id = %s', (student_id,))
-        
+        # Calculate balance for each term
         for term in terms:
-            term_id = term['id']
-            term_amount = term['amount']
+            term_id = term[0]  # Access first element of tuple (id)
+            term_amount = term[1]  # Access second element of tuple (amount)
             
-            # Get total allocated to this term
+            # Get total payments for this term
             cur.execute('''
-                SELECT COALESCE(SUM(amount), 0) as allocated
-                FROM payment_allocations pa
-                JOIN payments p ON pa.payment_id = p.id
-                WHERE p.student_id = %s AND pa.term_id = %s
+                SELECT COALESCE(SUM(amount_paid), 0) 
+                FROM payments 
+                WHERE student_id = %s AND term_id = %s
             ''', (student_id, term_id))
-            allocated = cur.fetchone()['allocated'] or Decimal('0')
+            total_paid = cur.fetchone()[0] or Decimal('0')
             
-            term_balance = term_amount - allocated
+            term_balance = term_amount - total_paid
             
-            # Store term balance
-            cur.execute('''
-                INSERT INTO term_balances
-                (student_id, term_id, balance)
-                VALUES (%s, %s, %s)
-            ''', (student_id, term_id, term_balance))
-            
-            total_balance += term_balance
+            # Update term balance if the table exists
+            try:
+                cur.execute('''
+                    INSERT INTO term_balances (student_id, term_id, balance)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (student_id, term_id) DO UPDATE
+                    SET balance = EXCLUDED.balance
+                ''', (student_id, term_id, term_balance))
+            except Exception as e:
+                if 'relation "term_balances" does not exist' not in str(e):
+                    raise
         
         # Update overall balance
         cur.execute('''
@@ -641,7 +636,7 @@ def view_payments():
 def add_payment():
     # Get terms for dropdown
     try:
-        with get_db_cursor(dict_cursor=True) as cur:  # Ensure DictCursor is used here
+        with get_db_cursor(dict_cursor=True) as cur:  # Use dict_cursor for the form
             cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
             terms = cur.fetchall()
     except Exception as e:
@@ -665,53 +660,25 @@ def add_payment():
 
         try:
             amount_paid = Decimal(amount_paid)
-            if amount_paid <= 0:
-                flash('Amount must be positive', 'danger')
-                return render_template('add_payment.html', 
-                                    terms=terms,
-                                    default_date=datetime.now().strftime('%Y-%m-%d'),
-                                    form_data=request.form)
-            
             payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
-            if payment_date > datetime.now().date():
-                flash('Payment date cannot be in the future', 'danger')
-                return render_template('add_payment.html', 
-                                    terms=terms,
-                                    default_date=datetime.now().strftime('%Y-%m-%d'),
-                                    form_data=request.form)
             
-            with get_db_cursor(dict_cursor=True, commit=True) as cur:  # Use dict_cursor=True here
-                # Find student by admission no or name
+            with get_db_cursor(commit=True) as cur:
+                # Find student (using tuple access)
                 cur.execute('''
-                    SELECT id, name, admission_no FROM students 
+                    SELECT id FROM students 
                     WHERE admission_no = %s OR name ILIKE %s
-                    ORDER BY 
-                        CASE WHEN admission_no = %s THEN 0 ELSE 1 END,
-                        name
                     LIMIT 1
-                ''', (student_identifier, f'%{student_identifier}%', student_identifier))
+                ''', (student_identifier, f'%{student_identifier}%'))
                 student = cur.fetchone()
                 
                 if not student:
-                    flash(f'Student not found: {student_identifier}', 'danger')
-                    return render_template('add_payment.html', 
+                    flash('Student not found', 'danger')
+                    return render_template('add_payment.html',
                                         terms=terms,
                                         default_date=datetime.now().strftime('%Y-%m-%d'),
                                         form_data=request.form)
                 
-                student_id = student['id']
-                student_name = student['name']
-                admission_no = student['admission_no']
-
-                # Validate term exists
-                cur.execute('SELECT id FROM terms WHERE id = %s', (term_id,))
-                term = cur.fetchone()
-                if not term:
-                    flash('Invalid term selected', 'danger')
-                    return render_template('add_payment.html', 
-                                        terms=terms,
-                                        default_date=datetime.now().strftime('%Y-%m-%d'),
-                                        form_data=request.form)
+                student_id = student[0]  # Access first element of tuple
                 
                 # Generate receipt number
                 receipt_number = generate_receipt_number()
@@ -721,31 +688,21 @@ def add_payment():
                     INSERT INTO payments 
                     (student_id, term_id, amount_paid, payment_date, receipt_number)
                     VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-                
-                payment_id = cur.fetchone()['id']
                 
                 # Update student balance
                 calculate_student_balance(student_id)
                 
-                flash(f'Payment of KSh {amount_paid:,.2f} recorded for {student_name} ({admission_no})', 'success')
-                return redirect(url_for('view_receipt', payment_id=payment_id))
+                flash('Payment added successfully!', 'success')
+                return redirect(url_for('view_payments'))
                 
-        except ValueError as e:
-            logger.error(f"Value error in payment: {str(e)}")
+        except ValueError:
             flash('Invalid date or amount format', 'danger')
-            return render_template('add_payment.html', 
-                                terms=terms,
-                                default_date=datetime.now().strftime('%Y-%m-%d'),
-                                form_data=request.form)
         except Exception as e:
-            logger.error(f"Error adding payment: {str(e)}", exc_info=True)
-            flash(f'Error adding payment: {str(e)}', 'danger')
-            return render_template('add_payment.html', 
-                                terms=terms,
-                                default_date=datetime.now().strftime('%Y-%m-%d'),
-                                form_data=request.form)
+            logger.error(f"Error adding payment: {str(e)}")
+            flash('Error adding payment', 'danger')
+    
+    
     
 
     
