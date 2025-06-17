@@ -535,7 +535,51 @@ def add_payment():
     return render_template('add_payment.html',
                         students=students,
                         terms=terms,
-                        today=datetime.now().date())       
+                        today=datetime.now().date())  
+@app.route('/student/add-from-payment', methods=['GET', 'POST'])
+@login_required
+def add_student_from_payment():
+    if request.method == 'POST':
+        # Handle student creation from payment flow
+        name = request.form.get('name', '').strip()
+        admission_no = request.form.get('admission_no', '').strip().upper()
+        form = request.form.get('form', '').strip()
+        
+        try:
+            with get_db_cursor(commit=True) as cur:
+                cur.execute(
+                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s) RETURNING id',
+                    (admission_no, name, form)
+                )
+                student_id = cur.fetchone()[0]
+                
+                # Process pending payment
+                if 'pending_payment' in session:
+                    payment_data = session.pop('pending_payment')
+                    cur.execute('''
+                        INSERT INTO payments 
+                        (student_id, term_id, amount_paid, payment_date, receipt_number)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id
+                    ''', (student_id, payment_data['term_id'], payment_data['amount_paid'], 
+                          payment_data['payment_date'], payment_data['receipt_number']))
+                    
+                    payment_id = cur.fetchone()[0]
+                    flash('Student and payment recorded successfully!', 'success')
+                    return redirect(url_for('view_receipt', payment_id=payment_id))
+                
+        except psycopg2.IntegrityError:
+            flash('Admission number already exists!', 'danger')
+        except Exception as e:
+            flash(f'Error creating student: {str(e)}', 'danger')
+    
+    # GET request or failed POST - show form
+    payment_data = session.get('pending_payment', {})
+    return render_template('add_student_from_payment.html',
+                         admission_no=payment_data.get('admission_no', ''),
+                         default_form='Form 1')
+
+# Add the corresponding template for add_student_from_payment.html    
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
