@@ -626,10 +626,7 @@ def add_payment():
                                     default_date=datetime.now().strftime('%Y-%m-%d'),
                                     form_data=request.form)
             
-            with get_db_cursor(commit=True) as cur:
-                # Ensure DictCursor is used for this query
-                cur = conn.cursor(cursor_factory=extras.DictCursor) if not isinstance(cur, extras.DictCursor) else cur
-                
+            with get_db_cursor(dict_cursor=True, commit=True) as cur:  # Use dict_cursor=True here
                 # Find student by admission no or name
                 cur.execute('''
                     SELECT id, name, admission_no FROM students 
@@ -648,7 +645,6 @@ def add_payment():
                                         default_date=datetime.now().strftime('%Y-%m-%d'),
                                         form_data=request.form)
                 
-                # Access as dictionary
                 student_id = student['id']
                 student_name = student['name']
                 admission_no = student['admission_no']
@@ -692,12 +688,12 @@ def add_payment():
         except Exception as e:
             logger.error(f"Error adding payment: {str(e)}", exc_info=True)
             flash(f'Error adding payment: {str(e)}', 'danger')
-            
+            return render_template('add_payment.html', 
+                                terms=terms,
+                                default_date=datetime.now().strftime('%Y-%m-%d'),
+                                form_data=request.form)
     
-    # GET request
-    return render_template('add_payment.html', 
-                         terms=terms,
-                         default_date=datetime.now().strftime('%Y-%m-%d'))   
+
     
     return render_template('add_payment.html', 
                          
