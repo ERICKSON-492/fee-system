@@ -786,32 +786,66 @@ def view_receipt(payment_id):
 def outstanding_report():
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # Get current term ID
+            cur.execute("SELECT id FROM terms WHERE is_current = TRUE")
+            current_term = cur.fetchone()
+            current_term_id = current_term['id'] if current_term else None
+            
+            # Get outstanding balances with term breakdown
             cur.execute('''
-                SELECT s.id, s.name, s.admission_no,
-                       SUM(t.amount) AS total_due,
-                       COALESCE(SUM(p.amount_paid), 0) AS total_paid,
-                       SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) AS balance
+                SELECT 
+                    s.id, 
+                    s.name, 
+                    s.admission_no,
+                    t.name AS term_name,
+                    tb.fee_amount AS term_fee,
+                    tb.paid_amount AS term_paid,
+                    (tb.fee_amount - tb.paid_amount) AS term_balance,
+                    (SELECT SUM(fee_amount) FROM terms) AS total_fees,
+                    (SELECT SUM(paid_amount) FROM term_balances WHERE student_id = s.id) AS total_paid,
+                    (SELECT SUM(fee_amount - paid_amount) FROM term_balances WHERE student_id = s.id) AS total_balance
                 FROM students s
-                CROSS JOIN terms t
-                LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
-                GROUP BY s.id
-                HAVING SUM(t.amount) - COALESCE(SUM(p.amount_paid), 0) > 0
-                ORDER BY balance DESC
-            ''')
+                JOIN term_balances tb ON s.id = tb.student_id
+                JOIN terms t ON tb.term_id = t.id
+                WHERE tb.fee_amount > tb.paid_amount
+                ORDER BY 
+                    CASE WHEN tb.term_id = %s THEN 0 ELSE 1 END,  -- Current term first
+                    t.start_date DESC,
+                    (tb.fee_amount - tb.paid_amount) DESC
+            ''', (current_term_id,))
+            
             report_data = cur.fetchall()
+            
+            # Group by student for summary view
+            student_balances = {}
+            for row in report_data:
+                if row['id'] not in student_balances:
+                    student_balances[row['id']] = {
+                        'id': row['id'],
+                        'name': row['name'],
+                        'admission_no': row['admission_no'],
+                        'total_balance': row['total_balance'],
+                        'terms': []
+                    }
+                student_balances[row['id']]['terms'].append({
+                    'term_name': row['term_name'],
+                    'term_fee': row['term_fee'],
+                    'term_paid': row['term_paid'],
+                    'term_balance': row['term_balance']
+                })
             
             current_datetime = datetime.now()
             
     except Exception as e:
-        flash('Error generating report', 'danger')
+        flash('Error generating report: ' + str(e), 'danger')
         print(f"Error in outstanding_report: {str(e)}")
-        report_data = []
+        student_balances = {}
         current_datetime = datetime.now()
     
     return render_template('outstanding_report.html', 
-                         report_data=report_data,
+                         student_balances=student_balances,
+                         current_term_id=current_term_id,
                          current_datetime=current_datetime)
-
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
