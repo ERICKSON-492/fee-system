@@ -14,6 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from dotenv import load_dotenv
 import logging
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -173,11 +174,11 @@ def calculate_student_balance(student_id):
     """Calculate and update a student's balance"""
     with get_db_cursor(commit=True) as cur:
         # Get total fees due
-        cur.execute('SELECT COALESCE(SUM(amount), 0 FROM terms')
+        cur.execute('SELECT COALESCE(SUM(amount), 0) FROM terms')
         total_fees = cur.fetchone()[0] or Decimal('0')
         
         # Get total payments made
-        cur.execute('SELECT COALESCE(SUM(amount_paid), 0 FROM payments WHERE student_id = %s', (student_id,))
+        cur.execute('SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = %s', (student_id,))
         total_paid = cur.fetchone()[0] or Decimal('0')
         
         # Calculate balance
@@ -193,6 +194,11 @@ def calculate_student_balance(student_id):
         ''', (student_id, balance))
         
         return balance
+
+def generate_receipt_number():
+    """Generate a unique receipt number"""
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return f"RCPT-{timestamp}"
 
 # Initialize the connection pool
 init_db_pool()
@@ -259,7 +265,7 @@ def dashboard():
 @login_required
 def view_students():
     search = request.args.get('search', '')
-    query = 'SELECT * FROM students'
+    query = 'SELECT s.*, COALESCE(sb.current_balance, 0) AS balance FROM students s LEFT JOIN student_balances sb ON s.id = sb.student_id'
     params = []
     
     if search:
@@ -296,6 +302,12 @@ def add_student():
                 cur.execute(
                     'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s)',
                     (admission_no, name, form)
+                )
+                # Initialize balance for new student
+                student_id = cur.lastrowid
+                cur.execute(
+                    'INSERT INTO student_balances (student_id, current_balance) VALUES (%s, 0)',
+                    (student_id,)
                 )
                 flash('Student added successfully!', 'success')
                 return redirect(url_for('view_students'))
@@ -468,21 +480,49 @@ def delete_term(id):
     return redirect(url_for('view_terms'))
 
 # Payment management
-
+@app.route('/payments')
+@login_required
+def view_payments():
+    search = request.args.get('search', '')
+    query = '''
+        SELECT p.id, p.amount_paid, p.payment_date, p.receipt_number,
+               s.name AS student_name, s.admission_no,
+               t.name AS term_name
+        FROM payments p
+        JOIN students s ON p.student_id = s.id
+        JOIN terms t ON p.term_id = t.id
+    '''
+    params = []
+    
+    if search:
+        query += ' WHERE s.admission_no ILIKE %s OR s.name ILIKE %s OR p.receipt_number ILIKE %s'
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+    
+    query += ' ORDER BY p.payment_date DESC'
+    
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute(query, params)
+            payments = cur.fetchall()
+    except Exception as e:
+        logger.error(f"Error in view_payments: {str(e)}")
+        flash('Error retrieving payments', 'danger')
+        payments = []
+    
+    return render_template('payments.html', payments=payments, search=search)
 
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
     if request.method == 'POST':
-        student_id = request.form.get('student_id', '').strip()
-        term_id = request.form.get('term_id', '').strip()
-        amount_paid = request.form.get('amount_paid', '').strip()
-        payment_date = request.form.get('payment_date', '').strip()
+        student_id = request.form.get('student_id')
+        term_id = request.form.get('term_id')
+        amount_paid = request.form.get('amount_paid')
+        payment_date = request.form.get('payment_date')
 
-        logger.debug(f"Received data: student_id={student_id}, term_id={term_id}, amount_paid={amount_paid}, payment_date={payment_date}")
-
-        if not student_id or not term_id or not amount_paid or not payment_date:
-            flash('All fields are required.', 'danger')
+        # Validate inputs
+        if not all([student_id, term_id, amount_paid, payment_date]):
+            flash('All fields are required', 'danger')
             return redirect(url_for('add_payment'))
 
         try:
@@ -491,58 +531,56 @@ def add_payment():
                 flash('Amount must be positive', 'danger')
                 return redirect(url_for('add_payment'))
 
-            try:
-                payment_date_obj = datetime.strptime(payment_date, '%Y-%m-%d')
-            except ValueError:
-                flash('Invalid date format. Use YYYY-MM-DD.', 'danger')
-                return redirect(url_for('add_payment'))
+            payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+            receipt_number = generate_receipt_number()
 
             with get_db_cursor(commit=True) as cur:
+                # Insert payment
                 cur.execute('''
-                    INSERT INTO payments (student_id, term_id, amount_paid, payment_date, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                ''', (student_id, term_id, amount_paid, payment_date_obj.date()))
+                    INSERT INTO payments 
+                    (student_id, term_id, amount_paid, payment_date, receipt_number)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
 
-                logger.debug("Inserted payment into DB")
-
+                # Update student balance
                 calculate_student_balance(student_id)
-                logger.debug("Recalculated student balance")
 
                 flash('Payment added successfully!', 'success')
                 return redirect(url_for('view_payments'))
 
-        except (InvalidOperation, ValueError):
-            flash('Amount must be a valid number', 'danger')
+        except ValueError as e:
+            flash('Invalid date or amount format', 'danger')
         except Exception as e:
             logger.error(f"Error in add_payment: {str(e)}")
             flash(f'Error adding payment: {str(e)}', 'danger')
 
-    # GET request or on error reload students and terms for form
+    # GET request - load students and terms
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT id, name FROM students ORDER BY name')
+            cur.execute('SELECT id, name, admission_no FROM students ORDER BY name')
             students = cur.fetchall()
 
             cur.execute('SELECT id, name FROM terms ORDER BY name')
             terms = cur.fetchall()
 
+        return render_template('add_payment.html', 
+                            students=students, 
+                            terms=terms,
+                            default_date=datetime.now().strftime('%Y-%m-%d'))
+
     except Exception as e:
-        logger.error(f"Error retrieving students or terms: {str(e)}")
-        flash('Error loading form data', 'danger')
+        logger.error(f"Error loading payment form: {str(e)}")
+        flash('Error loading payment form', 'danger')
         return redirect(url_for('view_payments'))
-
-    return render_template('add_payment.html', students=students, terms=terms)
-
-
 
 @app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_payment(id):
     if request.method == 'POST':
-        student_id = request.form['student_id'].strip()
-        term_id = request.form['term_id'].strip()
-        amount_paid = request.form['amount_paid'].strip()
-        payment_date = request.form['payment_date'].strip()
+        student_id = request.form['student_id']
+        term_id = request.form['term_id']
+        amount_paid = request.form['amount_paid']
+        payment_date = request.form['payment_date']
         
         try:
             amount_paid = Decimal(amount_paid)
@@ -550,7 +588,14 @@ def edit_payment(id):
                 flash('Amount must be positive', 'danger')
                 return redirect(url_for('edit_payment', id=id))
                 
+            payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+            
             with get_db_cursor(commit=True) as cur:
+                # Get old student ID for balance recalculation
+                cur.execute('SELECT student_id FROM payments WHERE id = %s', (id,))
+                old_student_id = cur.fetchone()[0]
+                
+                # Update payment
                 cur.execute('''
                     UPDATE payments 
                     SET student_id = %s, term_id = %s, 
@@ -559,8 +604,10 @@ def edit_payment(id):
                     WHERE id = %s
                 ''', (student_id, term_id, amount_paid, payment_date, id))
                 
-                # Recalculate balance for student
-                calculate_student_balance(student_id)
+                # Recalculate balances for both old and new student
+                calculate_student_balance(old_student_id)
+                if old_student_id != student_id:
+                    calculate_student_balance(student_id)
                 
                 flash('Payment updated successfully!', 'success')
                 return redirect(url_for('view_payments'))
@@ -583,24 +630,26 @@ def edit_payment(id):
             ''', (id,))
             payment = cur.fetchone()
             
+            if not payment:
+                flash('Payment not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
             cur.execute('SELECT id, name FROM students ORDER BY name')
             students = cur.fetchall()
             
             cur.execute('SELECT id, name FROM terms ORDER BY name')
             terms = cur.fetchall()
+            
+            return render_template('edit_payment.html',
+                                payment=payment,
+                                students=students,
+                                terms=terms,
+                                formatted_date=payment['payment_date'].strftime('%Y-%m-%d'))
+            
     except Exception as e:
         logger.error(f"Error retrieving payment: {str(e)}")
         flash('Error retrieving payment', 'danger')
         return redirect(url_for('view_payments'))
-    
-    if not payment:
-        flash('Payment not found', 'danger')
-        return redirect(url_for('view_payments'))
-    
-    return render_template('edit_payment.html',
-                         payment=payment,
-                         students=students,
-                         terms=terms)
 
 @app.route('/payment/delete/<int:id>', methods=['POST'])
 @login_required
@@ -609,7 +658,12 @@ def delete_payment(id):
         with get_db_cursor(commit=True) as cur:
             # Get student ID before deleting
             cur.execute('SELECT student_id FROM payments WHERE id = %s', (id,))
-            student_id = cur.fetchone()[0]
+            result = cur.fetchone()
+            if not result:
+                flash('Payment not found', 'danger')
+                return redirect(url_for('view_payments'))
+            
+            student_id = result[0]
             
             # Delete payment
             cur.execute('DELETE FROM payments WHERE id = %s', (id,))
@@ -723,10 +777,11 @@ def outstanding_report():
                     s.id, 
                     s.name, 
                     s.admission_no,
+                    s.form,
                     sb.current_balance AS balance,
                     (SELECT SUM(t.amount) FROM terms t) AS total_fees,
                     (SELECT COALESCE(SUM(p.amount_paid), 0) 
-                    FROM payments p WHERE p.student_id = s.id) AS total_paid
+                     FROM payments p WHERE p.student_id = s.id) AS total_paid
                 FROM students s
                 JOIN student_balances sb ON s.id = sb.student_id
                 WHERE sb.current_balance < 0
@@ -734,6 +789,10 @@ def outstanding_report():
             ''')
             
             report_data = cur.fetchall()
+            
+            if not report_data:
+                flash('No students with outstanding balances found', 'info')
+                return redirect(url_for('dashboard'))
             
             # Calculate totals
             total_outstanding = Decimal('0')
@@ -843,10 +902,11 @@ def outstanding_report_pdf():
                     s.id, 
                     s.name, 
                     s.admission_no,
+                    s.form,
                     sb.current_balance AS balance,
                     (SELECT SUM(t.amount) FROM terms t) AS total_fees,
                     (SELECT COALESCE(SUM(p.amount_paid), 0) 
-                    FROM payments p WHERE p.student_id = s.id) AS total_paid
+                     FROM payments p WHERE p.student_id = s.id) AS total_paid
                 FROM students s
                 JOIN student_balances sb ON s.id = sb.student_id
                 WHERE sb.current_balance < 0
@@ -905,7 +965,7 @@ def outstanding_balance_receipt(student_id):
 
             current_date = datetime.now().strftime('%d/%m/%Y')
             due_date = (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y')
-            reference_no = f"BAL-{student['admission_no']}-{current_date.replace('/', '')}"
+            reference_no = f"BAL-{student['admission_no']}-{datetime.now().strftime('%Y%m%d')}"
 
             qr_data = f"""Student: {student['name']}
 Adm No: {student['admission_no']}
