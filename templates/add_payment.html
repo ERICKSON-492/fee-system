@@ -13,7 +13,6 @@
         </div>
         
         <div class="card-body">
-            <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -27,29 +26,28 @@
 
             <form method="POST" id="paymentForm">
                 <div class="row g-3">
-                    <!-- Student Selection Section -->
+                    <!-- Student Section -->
                     <div class="col-12">
-                        <div class="border-bottom pb-2 mb-3">
-                            <h5><i class="bi bi-person-plus me-2"></i>Student Information</h5>
-                        </div>
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-person-plus me-2"></i>Student Information
+                        </h5>
                     </div>
 
-                    <!-- Student Selection Options -->
                     <div class="col-md-6">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="student_input_method" 
                                    id="selectStudent" value="select" 
-                                   {% if request.form.student_input_method != 'manual' %}checked{% endif %}>
+                                   {% if not form_data or form_data.student_input_method != 'manual' %}checked{% endif %}>
                             <label class="form-check-label" for="selectStudent">
                                 Select Existing Student
                             </label>
                         </div>
                         <select class="form-select mt-2" id="student_select" name="admission_no"
-                                {% if request.form.student_input_method == 'manual' %}disabled{% endif %}>
+                                {% if form_data and form_data.student_input_method == 'manual' %}disabled{% endif %}>
                             <option value="">Choose student...</option>
                             {% for student in students %}
                             <option value="{{ student.admission_no }}"
-                                {% if request.form.admission_no == student.admission_no %}selected{% endif %}>
+                                {% if form_data and form_data.admission_no == student.admission_no %}selected{% endif %}>
                                 {{ student.name }} ({{ student.admission_no }})
                             </option>
                             {% endfor %}
@@ -60,61 +58,58 @@
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="student_input_method" 
                                    id="manualStudent" value="manual"
-                                   {% if request.form.student_input_method == 'manual' %}checked{% endif %}>
+                                   {% if form_data and form_data.student_input_method == 'manual' %}checked{% endif %}>
                             <label class="form-check-label" for="manualStudent">
-                                Enter New Admission Number
+                                Enter Admission Number
                             </label>
                         </div>
                         <input type="text" class="form-control mt-2" 
                                id="manual_admission" name="manual_admission"
-                               value="{{ request.form.manual_admission }}"
+                               value="{{ form_data.manual_admission if form_data else '' }}"
                                placeholder="e.g., STD2024-001"
-                               {% if request.form.student_input_method != 'manual' %}disabled{% endif %}
-                               {% if request.form.student_input_method == 'manual' %}required{% endif %}>
+                               {% if not form_data or form_data.student_input_method != 'manual' %}disabled{% endif %}>
                     </div>
 
-                    <!-- Payment Details Section -->
+                    <!-- Payment Section -->
                     <div class="col-12 mt-4">
-                        <div class="border-bottom pb-2 mb-3">
-                            <h5><i class="bi bi-credit-card me-2"></i>Payment Details</h5>
-                        </div>
+                        <h5 class="border-bottom pb-2 mb-3">
+                            <i class="bi bi-credit-card me-2"></i>Payment Details
+                        </h5>
                     </div>
 
-                    <!-- Term Selection -->
                     <div class="col-md-6">
-                        <label for="term_id" class="form-label">Term</label>
+                        <label for="term_id" class="form-label">Term *</label>
                         <select class="form-select" id="term_id" name="term_id" required>
                             <option value="">Select term...</option>
                             {% for term in terms %}
                             <option value="{{ term.id }}"
-                                {% if request.form.term_id == term.id|string %}selected{% endif %}>
+                                {% if form_data and form_data.term_id == term.id|string %}selected{% endif %}>
                                 {{ term.name }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
 
-                    <!-- Amount -->
                     <div class="col-md-6">
-                        <label for="amount_paid" class="form-label">Amount (KSh)</label>
+                        <label for="amount_paid" class="form-label">Amount (KSh) *</label>
                         <div class="input-group">
                             <span class="input-group-text">KSh</span>
                             <input type="number" step="0.01" min="0.01" 
                                    class="form-control" 
                                    id="amount_paid" name="amount_paid" 
-                                   value="{{ request.form.amount_paid }}" required>
+                                   value="{{ form_data.amount_paid if form_data else '' }}" 
+                                   required>
                         </div>
                     </div>
 
-                    <!-- Date -->
                     <div class="col-md-6">
-                        <label for="payment_date" class="form-label">Payment Date</label>
+                        <label for="payment_date" class="form-label">Payment Date *</label>
                         <input type="date" class="form-control" 
                                id="payment_date" name="payment_date" 
-                               value="{{ request.form.payment_date or today }}" required>
+                               value="{{ form_data.payment_date if form_data else today }}" 
+                               required>
                     </div>
 
-                    <!-- Form Actions -->
                     <div class="col-12 mt-4">
                         <button type="submit" class="btn btn-primary px-4">
                             <i class="bi bi-save me-2"></i>Record Payment
@@ -131,40 +126,50 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const selectMethod = document.querySelectorAll('input[name="student_input_method"]');
-    const selectStudent = document.getElementById('student_select');
+    const studentMethodRadios = document.querySelectorAll('input[name="student_input_method"]');
+    const studentSelect = document.getElementById('student_select');
     const manualInput = document.getElementById('manual_admission');
+
+    function toggleStudentInput() {
+        const method = document.querySelector('input[name="student_input_method"]:checked').value;
+        
+        if (method === 'manual') {
+            manualInput.disabled = false;
+            manualInput.required = true;
+            studentSelect.disabled = true;
+            studentSelect.required = false;
+        } else {
+            manualInput.disabled = true;
+            manualInput.required = false;
+            studentSelect.disabled = false;
+            studentSelect.required = true;
+        }
+    }
+
+    // Initialize
+    toggleStudentInput();
     
-    // Toggle between input methods
-    selectMethod.forEach(radio => {
-        radio.addEventListener('change', function() {
-            if (this.value === 'manual') {
-                manualInput.disabled = false;
-                manualInput.required = true;
-                selectStudent.disabled = true;
-                selectStudent.required = false;
-                selectStudent.value = '';
-            } else {
-                manualInput.disabled = true;
-                manualInput.required = false;
-                manualInput.value = '';
-                selectStudent.disabled = false;
-                selectStudent.required = true;
-            }
-        });
+    // Add event listeners
+    studentMethodRadios.forEach(radio => {
+        radio.addEventListener('change', toggleStudentInput);
     });
-    
+
     // Form validation
     document.getElementById('paymentForm').addEventListener('submit', function(e) {
-        const selectedMethod = document.querySelector('input[name="student_input_method"]:checked').value;
-        if (selectedMethod === 'manual' && !manualInput.value.trim()) {
+        const termSelect = document.getElementById('term_id');
+        if (termSelect.value === '') {
             e.preventDefault();
-            alert('Please enter an admission number');
-            manualInput.focus();
-        } else if (selectedMethod === 'select' && !selectStudent.value) {
+            alert('Please select a term');
+            termSelect.focus();
+            return;
+        }
+        
+        const amountInput = document.getElementById('amount_paid');
+        if (!amountInput.value || parseFloat(amountInput.value) <= 0) {
             e.preventDefault();
-            alert('Please select a student');
-            selectStudent.focus();
+            alert('Please enter a valid amount greater than zero');
+            amountInput.focus();
+            return;
         }
     });
 });
@@ -176,7 +181,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     [disabled] {
         background-color: #f8f9fa;
-        opacity: 0.7;
+    }
+    .form-label.required::after {
+        content: " *";
+        color: red;
     }
 </style>
 {% endblock %}
