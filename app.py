@@ -325,7 +325,7 @@ def edit_student(id):
         try:
             with get_db_cursor() as cur:
                 cur.execute(
-              int(f"Error in edit_term: {str(e)}")
+              print(f"Error in edit_term: {str(e)}")
          'UPDATE students SET name = %s, form = %s WHERE id = %s',
                     (name, form, id)
                 )
