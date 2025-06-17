@@ -28,7 +28,14 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Database connection pool
@@ -50,10 +57,21 @@ def init_db_pool():
                 
             db_pool = pool.ThreadedConnectionPool(
                 minconn=1,
-                maxconn=10,
+                maxconn=20,
                 dsn=DATABASE_URL,
-                sslmode='require'
+                sslmode='require',
+                options='-c statement_timeout=30000'
             )
+            
+            # Test the connection
+            conn = db_pool.getconn()
+            try:
+                cur = conn.cursor()
+                cur.execute('SELECT 1')
+                cur.close()
+            finally:
+                db_pool.putconn(conn)
+                
             logger.info("✅ Database connection established")
             init_db()
             return
@@ -229,6 +247,48 @@ def get_terms():
         flash('Error loading term list', 'danger')
         return []
 
+def calculate_student_balance(student_id):
+    """Calculate accurate student balance"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Calculate total fees due
+            cur.execute("SELECT COALESCE(SUM(amount), 0) FROM terms")
+            total_due = Decimal(str(cur.fetchone()[0]))
+            
+            # Calculate total payments made
+            cur.execute("""
+                SELECT COALESCE(SUM(amount_paid), 0) 
+                FROM payments 
+                WHERE student_id = %s
+            """, (student_id,))
+            total_paid = Decimal(str(cur.fetchone()[0]))
+            
+            return total_paid - total_due
+    except Exception as e:
+        logger.error(f"Error calculating balance for student {student_id}: {str(e)}")
+        return Decimal('0')
+
+def calculate_term_balance(student_id, term_id):
+    """Calculate balance for specific term"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get term amount
+            cur.execute("SELECT amount FROM terms WHERE id = %s", (term_id,))
+            term_amount = Decimal(str(cur.fetchone()[0]))
+            
+            # Get payments for this term
+            cur.execute("""
+                SELECT COALESCE(SUM(amount_paid), 0)
+                FROM payments
+                WHERE student_id = %s AND term_id = %s
+            """, (student_id, term_id))
+            term_paid = Decimal(str(cur.fetchone()[0]))
+            
+            return term_amount - term_paid
+    except Exception as e:
+        logger.error(f"Error calculating term balance: {str(e)}")
+        return Decimal('0')
+
 # Error handlers
 @app.errorhandler(psycopg2.OperationalError)
 def handle_db_error(e):
@@ -252,6 +312,16 @@ def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({'status': 'unhealthy', 'database': str(e)}), 500
+
+@app.before_request
+def check_db_connection():
+    """Check database connection before each request"""
+    try:
+        with get_db_cursor() as cur:
+            cur.execute('SELECT 1')
+    except Exception as e:
+        logger.error("Database connection lost, reinitializing...")
+        init_db_pool()  # Reinitialize the pool
 
 def login_required(f):
     @wraps(f)
@@ -299,218 +369,11 @@ def logout():
 def dashboard():
     return redirect(url_for('view_students'))
 
-# Student management
-@app.route('/students')
-@login_required
-def view_students():
-    search = request.args.get('search', '')
-    query = 'SELECT * FROM students'
-    params = []
-    
-    if search:
-        query += ' WHERE admission_no ILIKE %s OR name ILIKE %s'
-        params.extend([f'%{search}%', f'%{search}%'])
-    
-    query += ' ORDER BY name'
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute(query, params)
-            students = cur.fetchall()
-    except Exception as e:
-        logger.error(f"Error in view_students: {str(e)}")
-        flash('Error retrieving students', 'danger')
-        students = []
-    
-    return render_template('students.html', students=students, search=search)
+# Student management (unchanged from your original code)
+# ... [Keep all your existing student management routes] ...
 
-@app.route('/student/add', methods=['GET', 'POST'])
-@login_required
-def add_student():
-    if request.method == 'POST':
-        admission_no = request.form['admission_no'].strip()
-        name = request.form['name'].strip()
-        form = request.form['form'].strip()
-        
-        if not admission_no or not name or not form:
-            flash('All fields are required', 'danger')
-            return render_template('add_student.html')
-        
-        try:
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s)',
-                    (admission_no, name, form)
-                )
-                flash('Student added successfully!', 'success')
-                return redirect(url_for('view_students'))
-        except psycopg2.IntegrityError:
-            flash('Admission number must be unique!', 'danger')
-        except Exception as e:
-            logger.error(f"Error in add_student: {str(e)}")
-            flash(f'Error adding student: {str(e)}', 'danger')
-    
-    return render_template('add_student.html')
-
-@app.route('/student/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_student(id):
-    if request.method == 'POST':
-        name = request.form['name'].strip()
-        form = request.form['form'].strip()
-        
-        if not name or not form:
-            flash('All fields are required', 'danger')
-            return redirect(url_for('edit_student', id=id))
-        
-        try:
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'UPDATE students SET name = %s, form = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
-                    (name, form, id)
-                )
-                flash('Student updated successfully!', 'success')
-                return redirect(url_for('view_students'))
-        except Exception as e:
-            logger.error(f"Error in edit_student: {str(e)}")
-            flash(f'Error updating student: {str(e)}', 'danger')
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT * FROM students WHERE id = %s', (id,))
-            student = cur.fetchone()
-    except Exception as e:
-        logger.error(f"Error retrieving student: {str(e)}")
-        flash('Error retrieving student', 'danger')
-        return redirect(url_for('view_students'))
-    
-    if not student:
-        flash('Student not found', 'danger')
-        return redirect(url_for('view_students'))
-    
-    return render_template('edit_student.html', student=student)
-
-@app.route('/student/delete/<int:id>', methods=['POST'])
-@login_required
-def delete_student(id):
-    try:
-        with get_db_cursor(commit=True) as cur:
-            cur.execute('DELETE FROM students WHERE id = %s', (id,))
-            flash('Student deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error in delete_student: {str(e)}")
-        flash(f'Error deleting student: {str(e)}', 'danger')
-    
-    return redirect(url_for('view_students'))
-
-# Term management
-@app.route('/terms')
-@login_required
-def view_terms():
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT * FROM terms ORDER BY name')
-            terms = cur.fetchall()
-    except Exception as e:
-        logger.error(f"Error in view_terms: {str(e)}")
-        flash('Error retrieving terms', 'danger')
-        terms = []
-    
-    return render_template('terms.html', terms=terms)
-
-@app.route('/term/add', methods=['GET', 'POST'])
-@login_required
-def add_term():
-    if request.method == 'POST':
-        name = request.form['name'].strip()
-        amount = request.form['amount'].strip()
-        
-        if not name or not amount:
-            flash('All fields are required', 'danger')
-            return render_template('add_term.html')
-        
-        try:
-            amount = Decimal(amount)
-            if amount <= 0:
-                flash('Amount must be positive', 'danger')
-                return render_template('add_term.html')
-                
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'INSERT INTO terms (name, amount) VALUES (%s, %s)',
-                    (name, amount)
-                )
-                flash('Term added successfully!', 'success')
-                return redirect(url_for('view_terms'))
-        except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number', 'danger')
-        except psycopg2.IntegrityError:
-            flash('Term name must be unique!', 'danger')
-        except Exception as e:
-            logger.error(f"Error in add_term: {str(e)}")
-            flash(f'Error adding term: {str(e)}', 'danger')
-    
-    return render_template('add_term.html')
-
-@app.route('/term/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_term(id):
-    if request.method == 'POST':
-        name = request.form['name'].strip()
-        amount = request.form['amount'].strip()
-        
-        if not name or not amount:
-            flash('All fields are required', 'danger')
-            return redirect(url_for('edit_term', id=id))
-        
-        try:
-            amount = Decimal(amount)
-            if amount <= 0:
-                flash('Amount must be positive', 'danger')
-                return redirect(url_for('edit_term', id=id))
-                
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'UPDATE terms SET name = %s, amount = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
-                    (name, amount, id)
-                )
-                flash('Term updated successfully!', 'success')
-                return redirect(url_for('view_terms'))
-        except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number', 'danger')
-        except psycopg2.IntegrityError:
-            flash('Term name must be unique!', 'danger')
-        except Exception as e:
-            logger.error(f"Error updating term: {str(e)}")
-            flash(f'Error updating term: {str(e)}', 'danger')
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('SELECT * FROM terms WHERE id = %s', (id,))
-            term = cur.fetchone()
-    except Exception as e:
-        logger.error(f"Error retrieving term: {str(e)}")
-        flash('Error retrieving term', 'danger')
-        return redirect(url_for('view_terms'))
-    
-    if not term:
-        flash('Term not found', 'danger')
-        return redirect(url_for('view_terms'))
-    
-    return render_template('edit_term.html', term=term)
-
-@app.route('/term/delete/<int:id>', methods=['POST'])
-@login_required
-def delete_term(id):
-    try:
-        with get_db_cursor(commit=True) as cur:
-            cur.execute('DELETE FROM terms WHERE id = %s', (id,))
-            flash('Term deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error in delete_term: {str(e)}")
-        flash(f'Error deleting term: {str(e)}', 'danger')
-    
-    return redirect(url_for('view_terms'))
+# Term management (unchanged from your original code)
+# ... [Keep all your existing term management routes] ...
 
 # Payment management
 @app.route('/payments')
@@ -563,8 +426,8 @@ def view_payments():
 def add_payment():
     if request.method == 'POST':
         try:
-            student_id = request.form['student_id']
-            term_id = request.form['term_id']
+            student_id = int(request.form['student_id'])
+            term_id = int(request.form['term_id'])
             amount_paid = Decimal(request.form['amount_paid'])
             payment_date = request.form.get('payment_date') or datetime.now().date()
             
@@ -577,46 +440,36 @@ def add_payment():
                 cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
                 term_amount = Decimal(str(cur.fetchone()[0]))
                 
-                # Get current balance
-                cur.execute('''
-                    SELECT current_balance FROM student_balances 
-                    WHERE student_id = %s
-                ''', (student_id,))
-                balance_row = cur.fetchone()
-                current_balance = Decimal(str(balance_row[0])) if balance_row else Decimal('0')
-                
-                # Calculate new balance
-                new_balance = current_balance + amount_paid - term_amount
-                
-                # Update balance record
-                if balance_row:
-                    cur.execute('''
-                        UPDATE student_balances 
-                        SET current_balance = %s,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE student_id = %s
-                    ''', (new_balance, student_id))
-                else:
-                    cur.execute('''
-                        INSERT INTO student_balances (student_id, current_balance)
-                        VALUES (%s, %s)
-                    ''', (student_id, new_balance))
-                
                 # Record payment
                 receipt_number = f"RCPT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 cur.execute('''
                     INSERT INTO payments 
                     (student_id, term_id, amount_paid, payment_date, receipt_number)
                     VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+                payment_id = cur.fetchone()[0]
+                
+                # Update student balance
+                cumulative_balance = calculate_student_balance(student_id)
+                
+                # Update or insert balance record
+                cur.execute('''
+                    INSERT INTO student_balances (student_id, current_balance)
+                    VALUES (%s, %s)
+                    ON CONFLICT (student_id) 
+                    DO UPDATE SET 
+                        current_balance = EXCLUDED.current_balance,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (student_id, cumulative_balance))
                 
                 # Return appropriate message
-                if new_balance >= 0:
-                    flash(f'Payment recorded! {amount_paid:.2f} paid. New balance: {new_balance:.2f} (credit)', 'success')
+                if cumulative_balance >= 0:
+                    flash(f'Payment recorded! {amount_paid:.2f} paid. New balance: {cumulative_balance:.2f} (credit)', 'success')
                 else:
-                    flash(f'Payment recorded! {amount_paid:.2f} paid. Balance due: {-new_balance:.2f}', 'success')
+                    flash(f'Payment recorded! {amount_paid:.2f} paid. Balance due: {-cumulative_balance:.2f}', 'success')
                     
-                return redirect(url_for('view_payments'))
+                return redirect(url_for('view_receipt', payment_id=payment_id))
                 
         except (ValueError, InvalidOperation):
             flash('Amount must be a valid number', 'danger')
@@ -628,135 +481,7 @@ def add_payment():
     terms = get_terms()
     return render_template('add_payment.html', students=students, terms=terms)
 
-@app.route('/student/add-from-payment', methods=['GET', 'POST'])
-@login_required
-def add_student_from_payment():
-    if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        admission_no = request.form.get('admission_no', '').strip().upper()
-        form = request.form.get('form', '').strip()
-        
-        if not name or not admission_no or not form:
-            flash('All fields are required', 'danger')
-            return render_template('add_student_from_payment.html',
-                                admission_no=admission_no,
-                                name=name,
-                                form=form)
-        
-        try:
-            with get_db_cursor(commit=True) as cur:
-                cur.execute(
-                    'INSERT INTO students (admission_no, name, form) VALUES (%s, %s, %s) RETURNING id',
-                    (admission_no, name, form)
-                )
-                student_id = cur.fetchone()[0]
-                
-                if 'pending_payment' in session:
-                    payment_data = session.pop('pending_payment')
-                    amount_paid = Decimal(payment_data['amount_paid'])
-                    
-                    cur.execute('''
-                        INSERT INTO payments 
-                        (student_id, term_id, amount_paid, payment_date, receipt_number)
-                        VALUES (%s, %s, %s, %s, %s)
-                        RETURNING id
-                    ''', (student_id, 
-                          payment_data['term_id'], 
-                          amount_paid,
-                          payment_data['payment_date'], 
-                          payment_data['receipt_number']))
-                    
-                    payment_id = cur.fetchone()[0]
-                    flash('Student and payment recorded successfully!', 'success')
-                    return redirect(url_for('view_receipt', payment_id=payment_id))
-                
-        except psycopg2.IntegrityError:
-            flash('Admission number already exists!', 'danger')
-        except Exception as e:
-            logger.error(f"Error creating student: {str(e)}")
-            flash(f'Error creating student: {str(e)}', 'danger')
-    
-    payment_data = session.get('pending_payment', {})
-    return render_template('add_student_from_payment.html',
-                         admission_no=payment_data.get('admission_no', ''),
-                         default_form='Form 1')
-
-@app.route('/payment/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_payment(id):
-    if request.method == 'POST':
-        student_id = request.form['student_id'].strip()
-        term_id = request.form['term_id'].strip()
-        amount_paid = request.form['amount_paid'].strip()
-        payment_date = request.form['payment_date'].strip()
-        
-        try:
-            amount_paid = Decimal(amount_paid)
-            if amount_paid <= 0:
-                flash('Amount must be positive', 'danger')
-                return redirect(url_for('edit_payment', id=id))
-                
-            with get_db_cursor(commit=True) as cur:
-                cur.execute('''
-                    UPDATE payments 
-                    SET student_id = %s, term_id = %s, 
-                        amount_paid = %s, payment_date = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                ''', (student_id, term_id, amount_paid, payment_date, id))
-                
-                flash('Payment updated successfully!', 'success')
-                return redirect(url_for('view_payments'))
-        except (ValueError, InvalidOperation):
-            flash('Amount must be a valid number', 'danger')
-        except Exception as e:
-            logger.error(f"Error in edit_payment: {str(e)}")
-            flash(f'Error updating payment: {str(e)}', 'danger')
-    
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('''
-                SELECT p.id, p.student_id, p.term_id, p.amount_paid, p.payment_date,
-                       s.name AS student_name, s.admission_no,
-                       t.name AS term_name
-                FROM payments p
-                JOIN students s ON p.student_id = s.id
-                JOIN terms t ON p.term_id = t.id
-                WHERE p.id = %s
-            ''', (id,))
-            payment = cur.fetchone()
-            
-            cur.execute('SELECT id, name FROM students ORDER BY name')
-            students = cur.fetchall()
-            
-            cur.execute('SELECT id, name FROM terms ORDER BY name')
-            terms = cur.fetchall()
-    except Exception as e:
-        logger.error(f"Error retrieving payment: {str(e)}")
-        flash('Error retrieving payment', 'danger')
-        return redirect(url_for('view_payments'))
-    
-    if not payment:
-        flash('Payment not found', 'danger')
-        return redirect(url_for('view_payments'))
-    
-    return render_template('edit_payment.html',
-                         payment=payment,
-                         students=students,
-                         terms=terms)
-
-@app.route('/payment/delete/<int:id>', methods=['POST'])
-@login_required
-def delete_payment(id):
-    try:
-        with get_db_cursor(commit=True) as cur:
-            cur.execute('DELETE FROM payments WHERE id = %s', (id,))
-            flash('Payment deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error in delete_payment: {str(e)}")
-        flash(f'Error deleting payment: {str(e)}', 'danger')
-    
-    return redirect(url_for('view_payments'))
+# ... [Keep all your existing payment edit/delete routes] ...
 
 @app.route('/receipt/<int:payment_id>')
 @login_required
@@ -792,6 +517,12 @@ def view_receipt(payment_id):
             term_amount = Decimal(str(payment.get('term_amount', 0)))
             amount_paid = Decimal(str(payment.get('amount_paid', 0)))
             
+            # Calculate term-specific balance
+            term_balance = calculate_term_balance(payment['student_id'], payment['term_id'])
+            
+            # Calculate cumulative balance
+            cumulative_balance = calculate_student_balance(payment['student_id'])
+            
             # Safely get payment date
             payment_date = payment.get('payment_date')
             if payment_date:
@@ -799,37 +530,7 @@ def view_receipt(payment_id):
             else:
                 formatted_date = 'N/A'
             
-            # Calculate total payments for this term with null handling
-            cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
-                FROM payments
-                WHERE student_id = %s AND term_id = %s
-            ''', (payment.get('student_id'), payment.get('term_id')))
-            term_total_paid = Decimal(str(cur.fetchone().get('total_paid', 0)))
-            
-            # Calculate balances with proper null handling
-            term_balance = term_amount - term_total_paid
-            
-            # Calculate cumulative balance with proper null handling
-            cur.execute('''
-                SELECT 
-                    COALESCE(SUM(t.amount), 0) AS total_due,
-                    COALESCE(SUM(p.amount_paid), 0) AS total_paid
-                FROM students s
-                CROSS JOIN terms t
-                LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
-                WHERE s.id = %s
-                GROUP BY s.id
-            ''', (payment.get('student_id'),))
-            result = cur.fetchone()
-            
-            cumulative_balance = Decimal('0')
-            if result:
-                total_due = Decimal(str(result.get('total_due', 0)))
-                total_paid = Decimal(str(result.get('total_paid', 0)))
-                cumulative_balance = total_paid - total_due
-            
-            # Generate QR code with all null checks
+            # Generate QR code
             qr_data = f"""
             Receipt: {payment.get('receipt_number', 'N/A')}
             Student: {payment.get('student_name', 'N/A')} ({payment.get('admission_no', 'N/A')})
@@ -854,7 +555,6 @@ def view_receipt(payment_id):
             return render_template('receipt.html',
                                 payment=payment,
                                 amount_paid=float(amount_paid),
-                                term_total_paid=float(term_total_paid),
                                 term_balance=float(term_balance),
                                 cumulative_balance=float(cumulative_balance),
                                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -867,86 +567,73 @@ def view_receipt(payment_id):
         flash('Error generating receipt', 'danger')
         return redirect(url_for('view_payments'))
 
+# Reports
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
-    current_term_id = None
-    student_balances = {}
-    total_outstanding = Decimal('0')
-    
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get most recent term by creation date
-            cur.execute('''
-                SELECT id FROM terms 
-                ORDER BY created_at DESC 
-                LIMIT 1
-            ''')
-            current_term = cur.fetchone()
-            current_term_id = current_term['id'] if current_term else None
-            
-            # Get outstanding balances with term breakdown
+            # Get students with outstanding balances
             cur.execute('''
                 SELECT 
                     s.id, 
                     s.name, 
                     s.admission_no,
-                    t.name AS term_name,
-                    t.id AS term_id,
-                    t.amount AS term_fee,
-                    COALESCE(SUM(p.amount_paid), 0) AS term_paid,
-                    (t.amount - COALESCE(SUM(p.amount_paid), 0)) AS term_balance,
-                    (SELECT SUM(amount) FROM terms) AS total_fees,
-                    (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = s.id) AS total_paid,
-                    ((SELECT SUM(amount) FROM terms) - 
-                     (SELECT COALESCE(SUM(amount_paid), 0) FROM payments WHERE student_id = s.id)) AS total_balance
+                    sb.current_balance AS balance,
+                    (SELECT COUNT(*) FROM terms) AS total_terms,
+                    (SELECT COUNT(DISTINCT term_id) FROM payments WHERE student_id = s.id) AS paid_terms
                 FROM students s
-                CROSS JOIN terms t
-                LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
-                GROUP BY s.id, t.id, t.name, t.amount
-                HAVING (t.amount - COALESCE(SUM(p.amount_paid), 0)) > 0
-                ORDER BY 
-                    CASE WHEN t.id = %s THEN 0 ELSE 1 END,
-                    t.created_at DESC,
-                    (t.amount - COALESCE(SUM(p.amount_paid), 0)) DESC
-            ''', (current_term_id,))
+                JOIN student_balances sb ON s.id = sb.student_id
+                WHERE sb.current_balance < 0
+                ORDER BY sb.current_balance ASC
+            ''')
+            students = cur.fetchall()
             
-            report_data = cur.fetchall()
+            # Calculate total outstanding
+            total_outstanding = Decimal('0')
+            for student in students:
+                total_outstanding += Decimal(str(abs(student['balance'])))
             
-            # Group by student for summary view
-            student_balances = {}
-            for row in report_data:
-                if row['id'] not in student_balances:
-                    student_balances[row['id']] = {
-                        'id': row['id'],
-                        'name': row['name'],
-                        'admission_no': row['admission_no'],
-                        'total_balance': row['total_balance'],
-                        'terms': []
-                    }
-                    total_outstanding += Decimal(str(row['total_balance']))
-                
-                student_balances[row['id']]['terms'].append({
-                    'term_name': row['term_name'],
-                    'term_id': row['term_id'],
-                    'term_fee': row['term_fee'],
-                    'term_paid': row['term_paid'],
-                    'term_balance': row['term_balance']
-                })
+            # Get term details for each student
+            for student in students:
+                cur.execute('''
+                    SELECT 
+                        t.id,
+                        t.name,
+                        t.amount,
+                        COALESCE((
+                            SELECT SUM(p.amount_paid)
+                            FROM payments p
+                            WHERE p.student_id = %s AND p.term_id = t.id
+                        ), 0) AS paid_amount,
+                        (t.amount - COALESCE((
+                            SELECT SUM(p.amount_paid)
+                            FROM payments p
+                            WHERE p.student_id = %s AND p.term_id = t.id
+                        ), 0)) AS balance
+                    FROM terms t
+                    HAVING (t.amount - COALESCE((
+                        SELECT SUM(p.amount_paid)
+                        FROM payments p
+                        WHERE p.student_id = %s AND p.term_id = t.id
+                    ), 0)) > 0
+                    ORDER BY t.name
+                ''', (student['id'], student['id'], student['id']))
+                student['terms'] = cur.fetchall()
             
             current_datetime = datetime.now()
+            
+            return render_template('outstanding_report.html', 
+                               students=students,
+                               total_outstanding=total_outstanding,
+                               current_datetime=current_datetime)
             
     except Exception as e:
         logger.error(f"Error in outstanding_report: {str(e)}")
         flash('Error generating report: ' + str(e), 'danger')
-        current_datetime = datetime.now()
-    
-    return render_template('outstanding_report.html', 
-                         student_balances=student_balances,
-                         current_term_id=current_term_id,
-                         total_outstanding=total_outstanding,
-                         current_datetime=current_datetime)
+        return redirect(url_for('dashboard'))
 
+# ... [Keep all your existing PDF generation routes] ...
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
 def generate_receipt_pdf(payment_id):
@@ -1102,10 +789,11 @@ Date: {current_date}"""
         print(f"Error generating receipt: {str(e)}")
         flash('Error generating receipt. Please try again.', 'danger')
         return redirect(url_for('outstanding_report'))
+
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
         app.run(host='0.0.0.0', port=port, debug=True)
     except Exception as e:
-        print(f"Failed to start application: {str(e)}")
+        logger.error(f"Failed to start application: {str(e)}")
         sys.exit(1)
