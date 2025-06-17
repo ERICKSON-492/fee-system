@@ -678,7 +678,7 @@ def delete_payment(id):
 def view_receipt(payment_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get all payment details in a single query
+            # Get payment details with student and term information
             cur.execute('''
                 SELECT 
                     p.id, 
@@ -703,33 +703,50 @@ def view_receipt(payment_id):
                 flash('Receipt not found', 'danger')
                 return redirect(url_for('view_payments'))
 
-            # Convert to a regular dictionary if needed
-            if hasattr(payment, 'items'):  # already a dict-like object
-                payment_dict = dict(payment)
-            else:
-                payment_dict = {key: payment[key] for key in payment._fields}
-
-            term_amount = Decimal(str(payment_dict['term_amount']))
-            amount_paid = Decimal(str(payment_dict['amount_paid']))
+            # Convert to Decimal for precise calculations
+            term_amount = Decimal(str(payment['term_amount']))
+            amount_paid = Decimal(str(payment['amount_paid']))
             
-            # Calculate total paid and balance
+            # Calculate total payments for this term
             cur.execute('''
                 SELECT COALESCE(SUM(amount_paid), 0)
                 FROM payments
                 WHERE student_id = %s AND term_id = %s
-            ''', (payment_dict['student_id'], payment_dict['term_id']))
-            total_paid_result = cur.fetchone()[0]
-            total_paid = Decimal(str(total_paid_result)) if total_paid_result else Decimal('0')
+            ''', (payment['student_id'], payment['term_id']))
+            term_total_paid = Decimal(str(cur.fetchone()[0]))
             
-            outstanding_balance = term_amount - total_paid
+            # Calculate balance for this specific term
+            term_balance = term_amount - term_total_paid
+            
+            # Calculate cumulative balance across all terms
+            cur.execute('''
+                SELECT 
+                    SUM(t.amount) AS total_due,
+                    COALESCE(SUM(p.amount_paid), 0) AS total_paid
+                FROM students s
+                CROSS JOIN terms t
+                LEFT JOIN payments p ON s.id = p.student_id AND t.id = p.term_id
+                WHERE s.id = %s
+                GROUP BY s.id
+            ''', (payment['student_id'],))
+            result = cur.fetchone()
+            
+            if result:
+                cumulative_balance = Decimal(str(result['total_paid'])) - Decimal(str(result['total_due']))
+            else:
+                cumulative_balance = Decimal('0')
             
             # Generate QR code
             qr_data = f"""
-            Receipt: {payment_dict['receipt_number']}
-            Student: {payment_dict['student_name']} ({payment_dict['admission_no']})
-            Amount: {float(amount_paid):.2f}
-            Date: {payment_dict['payment_date']}
+            Receipt: {payment['receipt_number']}
+            Student: {payment['student_name']} ({payment['admission_no']})
+            Amount Paid: {float(amount_paid):.2f}
+            Term: {payment['term_name']}
+            Term Balance: {"-" if term_balance > 0 else ""}{float(abs(term_balance)):.2f}
+            Cumulative Balance: {"+" if cumulative_balance > 0 else ""}{float(abs(cumulative_balance)):.2f}
+            Date: {payment['payment_date']}
             """
+            
             qr_img = qrcode.make(qr_data)
             qr_buffer = BytesIO()
             qr_img.save(qr_buffer, format="PNG")
@@ -737,18 +754,20 @@ def view_receipt(payment_id):
             
             logo_base64 = get_logo_base64()
             
+            return render_template('receipt.html',
+                                payment=payment,
+                                amount_paid=float(amount_paid),
+                                term_total_paid=float(term_total_paid),
+                                term_balance=float(term_balance),
+                                cumulative_balance=float(cumulative_balance),
+                                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                qr_code=qr_b64,
+                                logo_base64=logo_base64)
+            
     except Exception as e:
         flash('Error generating receipt', 'danger')
-        print(f"Error in view_receipt: {str(e)}", file=sys.stderr)
-        return redirect(url_for('view_payments'))
-    
-    return render_template('receipt.html',
-                        payment=payment_dict,
-                        total_paid=float(total_paid),
-                        outstanding_balance=float(outstanding_balance),
-                        current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        qr_code=qr_b64,
-                        logo_base64=logo_base64)
+        app.logger.error(f"Error in view_receipt: {str(e)}")
+        return redirect(url_for('view_payments'))    
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
