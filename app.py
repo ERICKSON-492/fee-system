@@ -780,23 +780,34 @@ def view_receipt(payment_id):
     except Exception as e:
         flash('Error generating receipt', 'danger')
         app.logger.error(f"Error in view_receipt: {str(e)}", exc_info=True)
-        return redirect(url_for('view_payments')) 
+        return redirect(url_for('view_payments'))
 @app.route('/reports/outstanding')
 @login_required
 def outstanding_report():
-    current_term_id = None  # Initialize variable
-    student_balances = {}  # Initialize variable
+    current_term_id = None
+    student_balances = {}
+    total_outstanding = 0  # Initialize grand total
     
     try:
         with get_db_cursor(dict_cursor=True) as cur:
-            # Get most recent term as fallback if is_current column doesn't exist
-            cur.execute('''
-                SELECT id FROM terms 
-                ORDER BY end_date DESC 
-                LIMIT 1
-            ''')
-            current_term = cur.fetchone()
-            current_term_id = current_term['id'] if current_term else None
+            # First try to get current term using is_current if column exists
+            try:
+                cur.execute('''
+                    SELECT id FROM terms 
+                    WHERE is_current = TRUE 
+                    LIMIT 1
+                ''')
+                current_term = cur.fetchone()
+                current_term_id = current_term['id'] if current_term else None
+            except:
+                # Fallback to most recent term by creation date if is_current column doesn't exist
+                cur.execute('''
+                    SELECT id FROM terms 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                ''')
+                current_term = cur.fetchone()
+                current_term_id = current_term['id'] if current_term else None
             
             # Get outstanding balances with term breakdown
             cur.execute('''
@@ -820,7 +831,7 @@ def outstanding_report():
                 HAVING (t.fee_amount - COALESCE(SUM(p.amount), 0)) > 0
                 ORDER BY 
                     CASE WHEN t.id = %s THEN 0 ELSE 1 END,  -- Current term first if available
-                    t.end_date DESC,
+                    t.created_at DESC,  -- Changed from end_date to created_at
                     (t.fee_amount - COALESCE(SUM(p.amount), 0)) DESC
             ''', (current_term_id,))
             
@@ -837,6 +848,8 @@ def outstanding_report():
                         'total_balance': row['total_balance'],
                         'terms': []
                     }
+                    total_outstanding += row['total_balance']  # Add to grand total
+                
                 student_balances[row['id']]['terms'].append({
                     'term_name': row['term_name'],
                     'term_id': row['term_id'],
@@ -855,6 +868,7 @@ def outstanding_report():
     return render_template('outstanding_report.html', 
                          student_balances=student_balances,
                          current_term_id=current_term_id,
+                         total_outstanding=total_outstanding,  # Pass to template
                          current_datetime=current_datetime)        
 @app.route('/receipt/<int:payment_id>/pdf')
 @login_required
