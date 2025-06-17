@@ -13,7 +13,8 @@
                     <input type="text" class="form-control" id="student_identifier" 
                            name="student_identifier" required
                            placeholder="Enter admission number or student name"
-                           autocomplete="off">
+                           autocomplete="off"
+                           value="{{ form_data.student_identifier if form_data else '' }}">
                     <div id="studentResults" class="list-group mt-2" style="display:none;"></div>
                     <small class="text-muted">Type to search students by name or admission number</small>
                 </div>
@@ -23,7 +24,10 @@
                     <select class="form-select" id="term_id" name="term_id" required>
                         <option value="">Select a term</option>
                         {% for term in terms %}
-                            <option value="{{ term.id }}">{{ term.name }} - KSh {{ term.amount }}</option>
+                            <option value="{{ term.id }}" 
+                                    {% if form_data and form_data.term_id == term.id|string %}selected{% endif %}>
+                                {{ term.name }} - KSh {{ term.amount }}
+                            </option>
                         {% endfor %}
                     </select>
                 </div>
@@ -31,13 +35,15 @@
                 <div class="mb-3">
                     <label for="amount_paid" class="form-label">Amount Paid (KSh)</label>
                     <input type="number" step="0.01" class="form-control" id="amount_paid" 
-                           name="amount_paid" required>
+                           name="amount_paid" required
+                           value="{{ form_data.amount_paid if form_data else '' }}">
                 </div>
                 
                 <div class="mb-3">
                     <label for="payment_date" class="form-label">Payment Date</label>
                     <input type="date" class="form-control" id="payment_date" 
-                           name="payment_date" value="{{ default_date }}" required>
+                           name="payment_date" 
+                           value="{{ form_data.payment_date if form_data else default_date }}" required>
                 </div>
                 
                 <button type="submit" class="btn btn-primary">Record Payment</button>
@@ -64,28 +70,35 @@ document.addEventListener('DOMContentLoaded', function() {
         
         debounceTimer = setTimeout(() => {
             fetch(`/api/students/search?q=${encodeURIComponent(searchTerm)}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(students => {
                     resultsContainer.innerHTML = '';
                     
                     if (students.length === 0) {
-                        resultsContainer.style.display = 'none';
-                        return;
-                    }
-                    
-                    students.forEach(student => {
-                        const item = document.createElement('button');
-                        item.type = 'button';
-                        item.className = 'list-group-item list-group-item-action';
-                        item.innerHTML = `
-                            <strong>${student.name}</strong> (${student.admission_no})
-                        `;
-                        item.addEventListener('click', () => {
-                            studentInput.value = student.admission_no;
-                            resultsContainer.style.display = 'none';
+                        const noResults = document.createElement('div');
+                        noResults.className = 'list-group-item text-muted';
+                        noResults.textContent = 'No students found';
+                        resultsContainer.appendChild(noResults);
+                    } else {
+                        students.forEach(student => {
+                            const item = document.createElement('button');
+                            item.type = 'button';
+                            item.className = 'list-group-item list-group-item-action';
+                            item.innerHTML = `
+                                <strong>${student.name}</strong> (${student.admission_no})
+                            `;
+                            item.addEventListener('click', () => {
+                                studentInput.value = student.admission_no;
+                                resultsContainer.style.display = 'none';
+                            });
+                            resultsContainer.appendChild(item);
                         });
-                        resultsContainer.appendChild(item);
-                    });
+                    }
                     
                     resultsContainer.style.display = 'block';
                 })
@@ -102,6 +115,11 @@ document.addEventListener('DOMContentLoaded', function() {
             resultsContainer.style.display = 'none';
         }
     });
+
+    // Prevent form submission when selecting from dropdown
+    resultsContainer.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
 });
 </script>
 
@@ -112,6 +130,23 @@ document.addEventListener('DOMContentLoaded', function() {
     width: calc(100% - 30px);
     max-height: 200px;
     overflow-y: auto;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.175);
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 4px;
+}
+
+#studentResults .list-group-item {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+}
+
+#studentResults .list-group-item:first-child {
+    border-top: none;
+}
+
+#studentResults .list-group-item:last-child {
+    border-bottom: none;
 }
 </style>
 {% endblock %}
