@@ -5,7 +5,7 @@ from psycopg2 import pool, extras
 from datetime import datetime, timedelta  # Ensure this is at the top of your app.py
 from flask import request
 from flask_paginate import Pagination, get_page_args
-
+import secrets  # Add this with your other imports
 from flask import Flask, render_template, request, redirect, url_for, flash, make_response, session, jsonify
 from weasyprint import HTML
 import qrcode
