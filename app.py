@@ -157,6 +157,20 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Add this to your existing init_db() function
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS outstanding_balance_notices (
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                amount DECIMAL(10,2) NOT NULL,
+                issued_date DATE NOT NULL,
+                due_date DATE NOT NULL,
+                reference_number TEXT UNIQUE NOT NULL,
+                is_paid BOOLEAN DEFAULT FALSE,
+                paid_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
         # Create indexes
         cur.execute('CREATE INDEX IF NOT EXISTS idx_payments_student_id ON payments(student_id)')
@@ -766,241 +780,249 @@ def view_receipt(payment_id):
         flash('Error generating receipt', 'danger')
         return redirect(url_for('view_payments'))
 
-@app.route('/reports/outstanding')
+@app.route('/outstanding')
 @login_required
-def outstanding_report():
+def outstanding_balances():
     try:
         with get_db_cursor(dict_cursor=True) as cur:
             # Get students with outstanding balances
             cur.execute('''
                 SELECT 
-                    s.id, 
-                    s.name, 
-                    s.admission_no,
-                    s.form,
+                    s.id, s.name, s.admission_no, s.form,
                     sb.current_balance AS balance,
-                    (SELECT SUM(t.amount) FROM terms t) AS total_fees,
-                    (SELECT COALESCE(SUM(p.amount_paid), 0) 
-                     FROM payments p WHERE p.student_id = s.id) AS total_paid
+                    COUNT(obn.id) AS notices_count,
+                    MAX(obn.due_date) AS latest_due_date
                 FROM students s
                 JOIN student_balances sb ON s.id = sb.student_id
-                WHERE sb.current_balance < 0
-                ORDER BY sb.current_balance ASC
+                LEFT JOIN outstanding_balance_notices obn ON s.id = obn.student_id AND NOT obn.is_paid
+                WHERE sb.current_balance > 0
+                GROUP BY s.id, s.name, s.admission_no, s.form, sb.current_balance
+                ORDER BY sb.current_balance DESC
             ''')
-            
-            report_data = cur.fetchall()
-            
-            if not report_data:
-                flash('No students with outstanding balances found', 'info')
-                return redirect(url_for('dashboard'))
-            
-            # Calculate totals
-            total_outstanding = Decimal('0')
-            for row in report_data:
-                row['balance'] = Decimal(str(row['balance']))
-                total_outstanding += abs(row['balance'])
-            
-            current_datetime = datetime.now()
-            
-            return render_template('outstanding_report.html', 
-                                 report_data=report_data,
-                                 total_outstanding=total_outstanding,
-                                 current_datetime=current_datetime)
-            
+            students = cur.fetchall()
+
+            # Calculate summary statistics
+            cur.execute('''
+                SELECT 
+                    COUNT(*) AS total_students,
+                    COALESCE(SUM(sb.current_balance), 0) AS total_outstanding,
+                    COUNT(obn.id) AS total_active_notices
+                FROM students s
+                JOIN student_balances sb ON s.id = sb.student_id
+                LEFT JOIN outstanding_balance_notices obn ON s.id = obn.student_id AND NOT obn.is_paid
+                WHERE sb.current_balance > 0
+            ''')
+            stats = cur.fetchone()
+
+            return render_template('outstanding_balances.html',
+                                students=students,
+                                stats=stats,
+                                current_date=datetime.now().date())
+
     except Exception as e:
-        logger.error(f"Error in outstanding_report: {str(e)}")
-        flash('Error generating report: ' + str(e), 'danger')
+        logger.error(f"Error in outstanding_balances: {str(e)}")
+        flash('Error retrieving outstanding balances', 'danger')
         return redirect(url_for('dashboard'))
 
-@app.route('/receipt/<int:payment_id>/pdf')
+
+@app.route('/outstanding/student/<int:student_id>')
 @login_required
-def generate_receipt_pdf(payment_id):
+def student_outstanding_details(student_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # Get student info and balance
             cur.execute('''
-                SELECT p.id, p.student_id, p.amount_paid, p.payment_date, p.receipt_number,
-                       s.name AS student_name, s.admission_no, s.form,
-                       t.name AS term_name, t.amount AS term_amount
+                SELECT 
+                    s.id, s.name, s.admission_no, s.form,
+                    sb.current_balance AS balance
+                FROM students s
+                JOIN student_balances sb ON s.id = sb.student_id
+                WHERE s.id = %s AND sb.current_balance > 0
+            ''', (student_id,))
+            student = cur.fetchone()
+
+            if not student:
+                flash('No outstanding balance for this student', 'info')
+                return redirect(url_for('outstanding_balances'))
+
+            # Get payment history
+            cur.execute('''
+                SELECT 
+                    p.id, p.amount_paid, p.payment_date, p.receipt_number,
+                    t.name AS term_name
                 FROM payments p
-                JOIN students s ON p.student_id = s.id
                 JOIN terms t ON p.term_id = t.id
-                WHERE p.id = %s
-            ''', (payment_id,))
-            payment = cur.fetchone()
-            
-            if not payment:
-                flash('Receipt not found', 'danger')
-                return redirect(url_for('view_payments'))
-            
-            # Get term total paid
+                WHERE p.student_id = %s
+                ORDER BY p.payment_date DESC
+            ''', (student_id,))
+            payments = cur.fetchall()
+
+            # Get outstanding notices
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
-                FROM payments
-                WHERE student_id = %s AND term_id = %s
-            ''', (payment['student_id'], payment['term_id']))
-            term_total_paid = Decimal(str(cur.fetchone()['total_paid']))
-            
-            # Calculate term balance
-            term_balance = Decimal(str(payment['term_amount'])) - term_total_paid
-            
-            # Get cumulative balance
+                SELECT 
+                    id, amount, issued_date, due_date, 
+                    reference_number, is_paid, paid_date
+                FROM outstanding_balance_notices
+                WHERE student_id = %s
+                ORDER BY issued_date DESC
+            ''', (student_id,))
+            notices = cur.fetchall()
+
+            # Get term fees
+            cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
+            terms = cur.fetchall()
+
+            return render_template('student_outstanding_details.html',
+                                student=student,
+                                payments=payments,
+                                notices=notices,
+                                terms=terms,
+                                current_date=datetime.now().date())
+
+    except Exception as e:
+        logger.error(f"Error in student_outstanding_details: {str(e)}")
+        flash('Error retrieving student details', 'danger')
+        return redirect(url_for('outstanding_balances'))
+
+
+@app.route('/outstanding/generate_notice/<int:student_id>', methods=['POST'])
+@login_required
+def generate_outstanding_notice(student_id):
+    try:
+        with get_db_cursor(commit=True) as cur:
+            # Verify student has outstanding balance
             cur.execute('''
                 SELECT current_balance 
                 FROM student_balances 
                 WHERE student_id = %s
-            ''', (payment['student_id'],))
-            balance_row = cur.fetchone()
-            cumulative_balance = Decimal(str(balance_row['current_balance'])) if balance_row else Decimal('0')
-            
-            # Generate QR code
-            qr_data = f"""
-            Receipt: {payment['receipt_number']}
-            Student: {payment['student_name']} ({payment['admission_no']})
-            Amount Paid: {float(payment['amount_paid']):.2f}
-            Term: {payment['term_name']}
-            Term Balance: {"-" if term_balance > 0 else ""}{float(abs(term_balance)):.2f}
-            Cumulative Balance: {"+" if cumulative_balance > 0 else ""}{float(abs(cumulative_balance)):.2f}
-            Date: {payment['payment_date'].strftime('%d/%m/%Y')}
-            """
-            
-            qr_img = qrcode.make(qr_data)
-            qr_buffer = BytesIO()
-            qr_img.save(qr_buffer, format="PNG")
-            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
-            
-            logo_base64 = get_logo_base64()
-            
-            html = render_template('receipt_pdf.html',
-                                payment=payment,
-                                term_total_paid=float(term_total_paid),
-                                term_balance=float(term_balance),
-                                cumulative_balance=float(cumulative_balance),
-                                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                qr_code=qr_b64,
-                                logo_base64=logo_base64,
-                                formatted_date=payment['payment_date'].strftime('%d/%m/%Y'))
-            
-            pdf_bytes = HTML(string=html).write_pdf()
-            
-            response = make_response(pdf_bytes)
-            response.headers['Content-Type'] = 'application/pdf'
-            response.headers['Content-Disposition'] = f'inline; filename=receipt_{payment["receipt_number"]}.pdf'
-            return response
-            
-    except Exception as e:
-        flash('Error generating PDF receipt', 'danger')
-        logger.error(f"Error in generate_receipt_pdf: {str(e)}")
-        return redirect(url_for('view_payments'))
+            ''', (student_id,))
+            balance = cur.fetchone()[0]
 
-@app.route('/reports/outstanding/pdf')
+            if not balance or balance <= 0:
+                flash('Student has no outstanding balance', 'warning')
+                return redirect(url_for('student_outstanding_details', student_id=student_id))
+
+            # Generate reference number
+            reference_no = f"OB-{datetime.now().strftime('%Y%m%d')}-{student_id}-{random.randint(1000, 9999)}"
+
+            # Create notice
+            issued_date = datetime.now().date()
+            due_date = issued_date + timedelta(days=14)
+
+            cur.execute('''
+                INSERT INTO outstanding_balance_notices
+                (student_id, amount, issued_date, due_date, reference_number)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (student_id, balance, issued_date, due_date, reference_no))
+
+            flash('Outstanding balance notice generated successfully', 'success')
+            return redirect(url_for('student_outstanding_details', student_id=student_id))
+
+    except Exception as e:
+        logger.error(f"Error in generate_outstanding_notice: {str(e)}")
+        flash('Error generating notice', 'danger')
+        return redirect(url_for('student_outstanding_details', student_id=student_id))
+
+
+@app.route('/outstanding/notice/<int:notice_id>')
 @login_required
-def outstanding_report_pdf():
+def view_outstanding_notice(notice_id):
     try:
         with get_db_cursor(dict_cursor=True) as cur:
+            # Get notice details
             cur.execute('''
                 SELECT 
-                    s.id, 
-                    s.name, 
+                    obn.*,
+                    s.name AS student_name,
                     s.admission_no,
-                    s.form,
-                    sb.current_balance AS balance,
-                    (SELECT SUM(t.amount) FROM terms t) AS total_fees,
-                    (SELECT COALESCE(SUM(p.amount_paid), 0) 
-                     FROM payments p WHERE p.student_id = s.id) AS total_paid
-                FROM students s
-                JOIN student_balances sb ON s.id = sb.student_id
-                WHERE sb.current_balance < 0
-                ORDER BY sb.current_balance ASC
-            ''')
-            
-            report_data = cur.fetchall()
-            
-            if not report_data:
-                flash('No outstanding balances found', 'info')
-                return redirect(url_for('outstanding_report'))
+                    s.form
+                FROM outstanding_balance_notices obn
+                JOIN students s ON obn.student_id = s.id
+                WHERE obn.id = %s
+            ''', (notice_id,))
+            notice = cur.fetchone()
 
-            # Calculate total outstanding
-            total_outstanding = Decimal('0')
-            for row in report_data:
-                row['balance'] = Decimal(str(row['balance']))
-                total_outstanding += abs(row['balance'])
+            if not notice:
+                flash('Notice not found', 'danger')
+                return redirect(url_for('outstanding_balances'))
 
-            logo_base64 = get_logo_base64()
-
-            html = render_template('outstanding_report_pdf.html',
-                                report_data=report_data,
-                                total_outstanding=total_outstanding,
-                                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                logo_base64=logo_base64)
-            
-            pdf_bytes = HTML(string=html).write_pdf()
-            
-            response = make_response(pdf_bytes)
-            response.headers['Content-Type'] = 'application/pdf'
-            response.headers['Content-Disposition'] = 'inline; filename=outstanding_balances.pdf'
-            return response
-            
-    except Exception as e:
-        flash('Error generating PDF report', 'danger')
-        logger.error(f"Error in outstanding_report_pdf: {str(e)}")
-        return redirect(url_for('outstanding_report'))  
-
-@app.route('/receipt/outstanding/<int:student_id>')
-@login_required
-def outstanding_balance_receipt(student_id):
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:
-            cur.execute('''
-                SELECT s.id, s.name, s.admission_no, s.form,
-                       sb.current_balance AS balance
-                FROM students s
-                JOIN student_balances sb ON s.id = sb.student_id
-                WHERE s.id = %s AND sb.current_balance < 0
-            ''', (student_id,))
-            student = cur.fetchone()
-            
-            if not student:
-                flash('No outstanding balance for this student', 'info')
-                return redirect(url_for('outstanding_report'))
-
-            current_date = datetime.now().strftime('%d/%m/%Y')
-            due_date = (datetime.now() + timedelta(days=14)).strftime('%d/%m/%Y')
-            reference_no = f"BAL-{student['admission_no']}-{datetime.now().strftime('%Y%m%d')}"
-
-            qr_data = f"""Student: {student['name']}
-Adm No: {student['admission_no']}
-Balance: KSh{abs(float(student['balance'])):,.2f}
-Date: {current_date}"""
+            # Generate QR code
+            qr_data = f"""Outstanding Balance Notice
+Reference: {notice['reference_number']}
+Student: {notice['student_name']} ({notice['admission_no']})
+Amount: KSh {float(notice['amount']):,.2f}
+Due Date: {notice['due_date'].strftime('%d/%m/%Y')}
+Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
             
             qr_img = qrcode.make(qr_data)
             qr_buffer = BytesIO()
             qr_img.save(qr_buffer, format="PNG")
             qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
-            
-            return render_template('outstanding_receipt.html',
-                                student=student,
-                                current_date=current_date,
-                                due_date=due_date,
-                                reference_no=reference_no,
+
+            return render_template('outstanding_notice.html',
+                                notice=notice,
                                 qr_code=qr_b64,
-                                logo_base64=get_logo_base64())
-            
+                                logo_base64=get_logo_base64(),
+                                current_date=datetime.now().date())
+
     except Exception as e:
-        logger.error(f"Error generating receipt: {str(e)}")
-        flash('Error generating receipt. Please try again.', 'danger')
-        return redirect(url_for('outstanding_report'))
+        logger.error(f"Error in view_outstanding_notice: {str(e)}")
+        flash('Error retrieving notice', 'danger')
+        return redirect(url_for('outstanding_balances'))
 
-# Health check endpoint
 
-@app.route('/health')
-def health_check():
+@app.route('/outstanding/notice/<int:notice_id>/pdf')
+@login_required
+def outstanding_notice_pdf(notice_id):
     try:
-        with get_db_cursor() as cur:
-            cur.execute('SELECT 1')
-            return jsonify({"status": "healthy", "database": "connected"})
-    except Exception as e:
-        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get notice details (same as view_outstanding_notice)
+            cur.execute('''
+                SELECT 
+                    obn.*,
+                    s.name AS student_name,
+                    s.admission_no,
+                    s.form
+                FROM outstanding_balance_notices obn
+                JOIN students s ON obn.student_id = s.id
+                WHERE obn.id = %s
+            ''', (notice_id,))
+            notice = cur.fetchone()
 
+            if not notice:
+                flash('Notice not found', 'danger')
+                return redirect(url_for('outstanding_balances'))
+
+            # Generate QR code
+            qr_data = f"""Outstanding Balance Notice
+Reference: {notice['reference_number']}
+Student: {notice['student_name']} ({notice['admission_no']})
+Amount: KSh {float(notice['amount']):,.2f}
+Due Date: {notice['due_date'].strftime('%d/%m/%Y')}
+Status: {'PAID' if notice['is_paid'] else 'PENDING'}"""
+            
+            qr_img = qrcode.make(qr_data)
+            qr_buffer = BytesIO()
+            qr_img.save(qr_buffer, format="PNG")
+            qr_b64 = base64.b64encode(qr_buffer.getvalue()).decode('utf-8')
+
+            html = render_template('outstanding_notice_pdf.html',
+                                notice=notice,
+                                qr_code=qr_b64,
+                                logo_base64=get_logo_base64(),
+                                current_date=datetime.now().date())
+
+            pdf_bytes = HTML(string=html).write_pdf()
+            
+            response = make_response(pdf_bytes)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = f'inline; filename=outstanding_balance_{notice["reference_number"]}.pdf'
+            return response
+
+    except Exception as e:
+        logger.error(f"Error in outstanding_notice_pdf: {str(e)}")
+        flash('Error generating PDF notice', 'danger')
+        return redirect(url_for('outstanding_balances'))
 if __name__ == '__main__':
     try:
         port = int(os.environ.get('FLASK_PORT', 5000))
