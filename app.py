@@ -212,49 +212,51 @@ def init_db():
             hashed_password = generate_password_hash('admin')
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', 
                        ('admin', hashed_password))
-def calculate_student_balance(student_id):
-    """Calculate and update a student's balance"""
-    with get_db_cursor(commit=True) as cur:
+def calculate_term_balance(student_id, term_id):
+    """Calculate balance for a specific term"""
+    with get_db_cursor() as cur:
+        # Get term amount
+        cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
+        term_amount = cur.fetchone()[0] or Decimal('0')
+        
+        # Get total payments for this term
+        cur.execute('''
+            SELECT COALESCE(SUM(amount_paid), 0)
+            FROM payments
+            WHERE student_id = %s AND term_id = %s
+        ''', (student_id, term_id))
+        total_paid = cur.fetchone()[0] or Decimal('0')
+        
+        return term_amount - total_paid
+
+def calculate_cumulative_balance(student_id):
+    """Calculate total outstanding balance across all terms"""
+    with get_db_cursor() as cur:
         # Get all terms
-        cur.execute('SELECT id, amount FROM terms ORDER BY id')
+        cur.execute('SELECT id, amount FROM terms')
         terms = cur.fetchall()
         
         total_balance = Decimal('0')
         
-        # Calculate balance for each term
         for term in terms:
-            term_id = term[0]  # Access first element of tuple (id)
-            term_amount = term[1]  # Access second element of tuple (amount)
+            term_id = term[0]
+            term_balance = calculate_term_balance(student_id, term_id)
+            total_balance += term_balance
             
-            # Get total payments for this term
+            # Update term_balances table
             cur.execute('''
-                SELECT COALESCE(SUM(amount_paid), 0) 
-                FROM payments 
-                WHERE student_id = %s AND term_id = %s
-            ''', (student_id, term_id))
-            total_paid = cur.fetchone()[0] or Decimal('0')
-            
-            term_balance = term_amount - total_paid
-            
-            # Update term balance if the table exists
-            try:
-                cur.execute('''
-                    INSERT INTO term_balances (student_id, term_id, balance)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (student_id, term_id) DO UPDATE
-                    SET balance = EXCLUDED.balance
-                ''', (student_id, term_id, term_balance))
-            except Exception as e:
-                if 'relation "term_balances" does not exist' not in str(e):
-                    raise
+                INSERT INTO term_balances (student_id, term_id, balance)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (student_id, term_id) DO UPDATE
+                SET balance = EXCLUDED.balance
+            ''', (student_id, term_id, term_balance))
         
-        # Update overall balance
+        # Update student_balances table
         cur.execute('''
             INSERT INTO student_balances (student_id, current_balance)
             VALUES (%s, %s)
             ON CONFLICT (student_id) DO UPDATE
-            SET current_balance = EXCLUDED.current_balance,
-                updated_at = CURRENT_TIMESTAMP
+            SET current_balance = EXCLUDED.current_balance
         ''', (student_id, total_balance))
         
         return total_balance
@@ -635,15 +637,26 @@ def view_payments():
 @login_required
 def add_payment():
     # Get terms for dropdown
-    try:
-        with get_db_cursor(dict_cursor=True) as cur:  # Use dict_cursor for the form
-            cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
-            terms = cur.fetchall()
-    except Exception as e:
-        logger.error(f"Error loading terms: {str(e)}")
-        flash('Error loading payment form', 'danger')
-        return redirect(url_for('view_payments'))
-
+   try:
+        amount_paid = Decimal(amount_paid)
+        payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
+        
+        with get_db_cursor(commit=True) as cur:
+            # [Previous student validation code]
+            
+            # Insert payment
+            cur.execute('''
+                INSERT INTO payments 
+                (student_id, term_id, amount_paid, payment_date, receipt_number)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
+            
+            # Update balances - both term-specific and cumulative
+            term_balance = calculate_term_balance(student_id, term_id)
+            cumulative_balance = calculate_cumulative_balance(student_id)
+            
+            flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
+            return redirect(url_for('view_payments'))
     if request.method == 'POST':
         student_identifier = request.form.get('student_identifier', '').strip()
         term_id = request.form.get('term_id')
@@ -711,7 +724,83 @@ def add_payment():
                          terms=terms,
                          default_date=datetime.now().strftime('%Y-%m-%d'),
                          datetime=datetime)
+@app.route('/student/<int:student_id>/balances')
+@login_required
+def view_student_balances(student_id):
+    """View all balances for a student"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get student info
+            cur.execute('SELECT id, name, admission_no FROM students WHERE id = %s', (student_id,))
+            student = cur.fetchone()
+            
+            if not student:
+                flash('Student not found', 'danger')
+                return redirect(url_for('view_students'))
+            
+            # Get all terms with balances
+            cur.execute('''
+                SELECT t.id, t.name, t.amount, 
+                       COALESCE(tb.balance, t.amount) as balance,
+                       t.amount - COALESCE(tb.balance, t.amount) as paid
+                FROM terms t
+                LEFT JOIN term_balances tb ON t.id = tb.term_id AND tb.student_id = %s
+                ORDER BY t.id
+            ''', (student_id,))
+            term_balances = cur.fetchall()
+            
+            # Get cumulative balance
+            cumulative_balance = calculate_cumulative_balance(student_id)
+            
+            return render_template('student_balances.html',
+                                student=student,
+                                term_balances=term_balances,
+                                cumulative_balance=cumulative_balance)
+            
+    except Exception as e:
+        logger.error(f"Error viewing balances: {str(e)}")
+        flash('Error retrieving balance information', 'danger')
+        return redirect(url_for('view_students'))
 
+@app.route('/student/<int:student_id>/term/<int:term_id>/balance')
+@login_required
+def view_term_balance(student_id, term_id):
+    """View balance for a specific term"""
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            # Get student and term info
+            cur.execute('SELECT id, name FROM students WHERE id = %s', (student_id,))
+            student = cur.fetchone()
+            
+            cur.execute('SELECT id, name, amount FROM terms WHERE id = %s', (term_id,))
+            term = cur.fetchone()
+            
+            if not student or not term:
+                flash('Student or term not found', 'danger')
+                return redirect(url_for('view_students'))
+            
+            # Calculate term balance
+            balance = calculate_term_balance(student_id, term_id)
+            
+            # Get payment history for this term
+            cur.execute('''
+                SELECT amount_paid, payment_date, receipt_number
+                FROM payments
+                WHERE student_id = %s AND term_id = %s
+                ORDER BY payment_date DESC
+            ''', (student_id, term_id))
+            payments = cur.fetchall()
+            
+            return render_template('term_balance.html',
+                                student=student,
+                                term=term,
+                                balance=balance,
+                                payments=payments)
+            
+    except Exception as e:
+        logger.error(f"Error viewing term balance: {str(e)}")
+        flash('Error retrieving term balance', 'danger')
+        return redirect(url_for('view_students'))
 @app.route('/api/students/search')
 @login_required
 def search_students():
