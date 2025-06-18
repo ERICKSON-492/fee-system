@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.name }} - Balances{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Balance Summary for {{ student.name }} ({{ student.admission_no }})</h2>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Cumulative Balance</h5>
+        </div>
+        <div class="card-body">
+            <h4 class="{% if cumulative_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                KSh {{ cumulative_balance|format_currency }}
+            </h4>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5>Term-wise Balances</h5>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Term</th>
+                        <th class="text-right">Term Amount</th>
+                        <th class="text-right">Amount Paid</th>
+                        <th class="text-right">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for term in term_balances %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('view_term_balance', student_id=student.id, term_id=term.id) }}">
+                                {{ term.name }}
+                            </a>
+                        </td>
+                        <td class="text-right">KSh {{ term.amount|format_currency }}</td>
+                        <td class="text-right">KSh {{ term.paid|format_currency }}</td>
+                        <td class="text-right {% if term.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                            KSh {{ term.balance|format_currency }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
