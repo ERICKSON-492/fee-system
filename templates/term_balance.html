@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.name }} - {{ term.name }} Balance{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>{{ term.name }} Balance for {{ student.name }}</h2>
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Term Amount:</strong> KSh {{ term.amount|format_currency }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="{% if balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                        <strong>Outstanding Balance:</strong> KSh {{ balance|format_currency }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5>Payment History</h5>
+        </div>
+        <div class="card-body">
+            {% if payments %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Receipt No</th>
+                        <th class="text-right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.payment_date.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ payment.receipt_number }}</td>
+                        <td class="text-right">KSh {{ payment.amount_paid|format_currency }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No payments recorded for this term</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
