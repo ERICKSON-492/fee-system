@@ -637,26 +637,15 @@ def view_payments():
 @login_required
 def add_payment():
     # Get terms for dropdown
-   try:
-        amount_paid = Decimal(amount_paid)
-        payment_date = datetime.strptime(payment_date, '%Y-%m-%d').date()
-        
-        with get_db_cursor(commit=True) as cur:
-            # [Previous student validation code]
-            
-            # Insert payment
-            cur.execute('''
-                INSERT INTO payments 
-                (student_id, term_id, amount_paid, payment_date, receipt_number)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
-            
-            # Update balances - both term-specific and cumulative
-            term_balance = calculate_term_balance(student_id, term_id)
-            cumulative_balance = calculate_cumulative_balance(student_id)
-            
-            flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
-            return redirect(url_for('view_payments'))
+    try:
+        with get_db_cursor(dict_cursor=True) as cur:
+            cur.execute('SELECT id, name, amount FROM terms ORDER BY name')
+            terms = cur.fetchall()
+    except Exception as e:
+        logger.error(f"Error loading terms: {str(e)}")
+        flash('Error loading payment form', 'danger')
+        return redirect(url_for('view_payments'))
+
     if request.method == 'POST':
         student_identifier = request.form.get('student_identifier', '').strip()
         term_id = request.form.get('term_id')
@@ -703,10 +692,11 @@ def add_payment():
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
                 
-                # Update student balance
-                calculate_student_balance(student_id)
+                # Update balances - both term-specific and cumulative
+                term_balance = calculate_term_balance(student_id, term_id)
+                cumulative_balance = calculate_cumulative_balance(student_id)
                 
-                flash('Payment added successfully!', 'success')
+                flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
                 return redirect(url_for('view_payments'))
                 
         except ValueError:
@@ -715,15 +705,10 @@ def add_payment():
             logger.error(f"Error adding payment: {str(e)}")
             flash('Error adding payment', 'danger')
     
-    
-    
-
-    
+    # GET request
     return render_template('add_payment.html', 
-                         
                          terms=terms,
-                         default_date=datetime.now().strftime('%Y-%m-%d'),
-                         datetime=datetime)
+                         default_date=datetime.now().strftime('%Y-%m-%d'))
 @app.route('/student/<int:student_id>/balances')
 @login_required
 def view_student_balances(student_id):
