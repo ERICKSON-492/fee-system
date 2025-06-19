@@ -213,35 +213,23 @@ def init_db():
             cur.execute('INSERT INTO users (username, password) VALUES (%s, %s)', 
                        ('admin', hashed_password))
 def calculate_term_balance(student_id, term_id):
-    """Calculate balance for a specific term"""
-    with get_db_cursor() as cur:
-        # Get term amount
-        cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
-        term_amount = cur.fetchone()[0] or Decimal('0')
-        
-        # Get total payments for this term
-        cur.execute('''
-            SELECT COALESCE(SUM(amount_paid), 0)
-            FROM payments
-            WHERE student_id = %s AND term_id = %s
-        ''', (student_id, term_id))
-        total_paid = cur.fetchone()[0] or Decimal('0')
-        
-        return term_amount - total_paid
-
-def calculate_cumulative_balance(student_id):
-    """Calculate total outstanding balance across all terms"""
-    with get_db_cursor() as cur:
-        # Get all terms
-        cur.execute('SELECT id, amount FROM terms')
-        terms = cur.fetchall()
-        
-        total_balance = Decimal('0')
-        
-        for term in terms:
-            term_id = term[0]
-            term_balance = calculate_term_balance(student_id, term_id)
-            total_balance += term_balance
+    """Calculate and update balance for a specific term"""
+    with get_db_cursor(commit=True) as cur:  # Added commit=True to ensure updates are saved
+        try:
+            # Get term amount
+            cur.execute('SELECT amount FROM terms WHERE id = %s', (term_id,))
+            term_result = cur.fetchone()
+            term_amount = term_result[0] if term_result else Decimal('0')
+            
+            # Get total payments for this term
+            cur.execute('''
+                SELECT COALESCE(SUM(amount_paid), 0)
+                FROM payments
+                WHERE student_id = %s AND term_id = %s
+            ''', (student_id, term_id))
+            total_paid = cur.fetchone()[0] or Decimal('0')
+            
+            balance = term_amount - total_paid
             
             # Update term_balances table
             cur.execute('''
@@ -249,17 +237,60 @@ def calculate_cumulative_balance(student_id):
                 VALUES (%s, %s, %s)
                 ON CONFLICT (student_id, term_id) DO UPDATE
                 SET balance = EXCLUDED.balance
-            ''', (student_id, term_id, term_balance))
-        
-        # Update student_balances table
-        cur.execute('''
-            INSERT INTO student_balances (student_id, current_balance)
-            VALUES (%s, %s)
-            ON CONFLICT (student_id) DO UPDATE
-            SET current_balance = EXCLUDED.current_balance
-        ''', (student_id, total_balance))
-        
-        return total_balance
+            ''', (student_id, term_id, balance))
+            
+            logger.info(f"Updated term balance - Student: {student_id}, Term: {term_id}, Balance: {balance}")
+            return balance
+            
+        except Exception as e:
+            logger.error(f"Error calculating term balance for student {student_id}, term {term_id}: {str(e)}")
+            raise  # Re-raise the exception to be handled by the caller
+def calculate_cumulative_balance(student_id):
+    """Calculate and update total outstanding balance across all terms"""
+    with get_db_cursor(commit=True) as cur:  # Added commit=True to ensure changes are saved
+        try:
+            # Get all terms with their amounts
+            cur.execute('SELECT id, amount FROM terms ORDER BY id')
+            terms = cur.fetchall()
+            
+            total_balance = Decimal('0')
+            
+            # Calculate balance for each term and update term_balances
+            for term_id, term_amount in terms:
+                # Get total payments for this term
+                cur.execute('''
+                    SELECT COALESCE(SUM(amount_paid), 0)
+                    FROM payments
+                    WHERE student_id = %s AND term_id = %s
+                ''', (student_id, term_id))
+                total_paid = cur.fetchone()[0] or Decimal('0')
+                
+                term_balance = term_amount - total_paid
+                total_balance += term_balance
+                
+                # Update term-specific balance
+                cur.execute('''
+                    INSERT INTO term_balances (student_id, term_id, balance)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (student_id, term_id) DO UPDATE
+                    SET balance = EXCLUDED.balance
+                ''', (student_id, term_id, term_balance))
+            
+            # Update the student's overall balance
+            cur.execute('''
+                INSERT INTO student_balances (student_id, current_balance)
+                VALUES (%s, %s)
+                ON CONFLICT (student_id) DO UPDATE
+                SET current_balance = EXCLUDED.current_balance,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (student_id, total_balance))
+            
+            logger.info(f"Updated cumulative balance for student {student_id}: {total_balance}")
+            return total_balance
+            
+        except Exception as e:
+            logger.error(f"Error calculating cumulative balance for student {student_id}: {str(e)}")
+            raise  # Re-raise the exception to be handled by the caller
 def generate_receipt_number():
     """Generate a unique receipt number"""
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -692,12 +723,16 @@ def add_payment():
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
                 
-                # Update balances - both term-specific and cumulative
-                term_balance = calculate_term_balance(student_id, term_id)
-                cumulative_balance = calculate_cumulative_balance(student_id)
-                
-                flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
-                return redirect(url_for('view_payments'))
+                 # Update balances
+        try:
+            term_balance = calculate_term_balance(student_id, term_id)
+            cumulative_balance = calculate_cumulative_balance(student_id)
+            flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
+        except Exception as e:
+            logger.error(f"Balance update failed: {str(e)}")
+            flash('Payment recorded but balance update failed', 'warning')
+        
+        return redirect(url_for('view_payments'))
                 
         except ValueError:
             flash('Invalid date or amount format', 'danger')
