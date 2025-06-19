@@ -663,7 +663,6 @@ def view_payments():
         payments = []
     
     return render_template('payments.html', payments=payments, search=search)
-
 @app.route('/payment/add', methods=['GET', 'POST'])
 @login_required
 def add_payment():
@@ -723,16 +722,16 @@ def add_payment():
                     VALUES (%s, %s, %s, %s, %s)
                 ''', (student_id, term_id, amount_paid, payment_date, receipt_number))
                 
-                 # Update balances
-        try:
-            term_balance = calculate_term_balance(student_id, term_id)
-            cumulative_balance = calculate_cumulative_balance(student_id)
-            flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
-        except Exception as e:
-            logger.error(f"Balance update failed: {str(e)}")
-            flash('Payment recorded but balance update failed', 'warning')
-        
-        return redirect(url_for('view_payments'))
+                # Update balances
+                try:
+                    term_balance = calculate_term_balance(student_id, term_id)
+                    cumulative_balance = calculate_cumulative_balance(student_id)
+                    flash(f'Payment recorded. Term balance: KSh {term_balance:,.2f}, Cumulative balance: KSh {cumulative_balance:,.2f}', 'success')
+                except Exception as e:
+                    logger.error(f"Balance update failed: {str(e)}")
+                    flash('Payment recorded but balance update failed', 'warning')
+                
+                return redirect(url_for('view_payments'))
                 
         except ValueError:
             flash('Invalid date or amount format', 'danger')
